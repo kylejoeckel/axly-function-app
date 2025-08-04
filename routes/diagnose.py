@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
 # ────────────────────────────────────────────────────────────
-#  Diagnose – vehicle‑ID‑based version
+#  Diagnose – vehicle-ID-based version
 # ────────────────────────────────────────────────────────────
 @bp.function_name(name="DiagnoseV2")
 @bp.route(route="diagnose2", methods=["POST", "OPTIONS"],
@@ -34,7 +34,6 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
         return cors_response(204)
 
     try:
-        # ---------- Parse multipart / JSON ----------
         fields      = parse_request(req)
         user_q      = fields["q"]
         session_id  = fields["session_id"] or str(uuid.uuid4())
@@ -47,7 +46,6 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
         if not any([user_q, image_bytes, audio_bytes]):
             return cors_response("Provide q, image or audio.", 400)
 
-        # ---------- Auth & fetch vehicle ----------
         user = current_user_from_request(req)
         if not user:
             return cors_response("Unauthorized", 401)
@@ -61,17 +59,18 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
         if not vehicle:
             return cors_response("Vehicle not found", 404)
 
-        mods_txt  = ", ".join(m.name for m in vehicle.mods) or ""
+        mods_txt = ", ".join(
+            f"{m.name}{f' – {m.description}' if m.description else ''}"
+            for m in vehicle.mods
+        )
         mods_line = f" (mods: {mods_txt})" if mods_txt else ""
+
         vehicle_context = (
-            f"Vehicle context: {vehicle.year} {vehicle.make} "
-            f"{vehicle.model}{mods_line}"
+            f"Vehicle context: {vehicle.year} {vehicle.make} {vehicle.model}{mods_line}"
         )
 
-        # ---------- History ----------
         history, conv_id = get_or_create_history(session_id, vehicle_context)
 
-        # link conversation row to vehicle (first time only)
         with SessionLocal() as db:
             conv = db.query(Conversation).filter(
                 Conversation.id == _uuid.UUID(conv_id)
@@ -80,8 +79,7 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
                 conv.vehicle_id = vehicle.id
                 db.commit()
 
-        # ---------- Assemble user message parts ----------
-        parts = []
+        parts: list[dict] = []
         if user_q:
             parts.append({"type": "text", "text": user_q})
         if image_bytes:
@@ -106,7 +104,6 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
         user_msg = {"role": "user", "content": parts}
         history.append(user_msg)
 
-        # ---------- Call OpenAI ----------
         rsp = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=history,
@@ -115,8 +112,7 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
         assistant_msg = {"role": "assistant", "content": answer}
         history.append(assistant_msg)
 
-        # ---------- House‑keeping ----------
-        if len(history) == 2:          # brand‑new conversation
+        if len(history) == 2:       
             generate_and_set_title(conv_id, user_q or "Diagnostics")
 
         save_conversation(conv_id, user_msg, assistant_msg)
@@ -130,6 +126,7 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
     except Exception:
         logger.exception("Error in DiagnoseV2 function")
         return cors_response("Server error", 500)
+
 
 
 # ────────────────────────────────────────────────────────────
