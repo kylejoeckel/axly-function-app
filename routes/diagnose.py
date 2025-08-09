@@ -115,7 +115,7 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
         mods_line = f" (mods: {mods_txt})" if mods_txt else ""
         vehicle_context = f"Vehicle context: {vehicle.year} {vehicle.make} {vehicle.model}{mods_line}"
 
-        history, conv_id = get_or_create_history(session_id, vehicle_context)
+        history, conv_id = get_or_create_history(session_id, vehicle_id=vehicle_id, vehicle_context=vehicle_context)
 
         # ensure the conversation row is bound to user/vehicle
         with SessionLocal() as db:
@@ -211,7 +211,7 @@ def diagnose(req: func.HttpRequest) -> func.HttpResponse:
         store_vehicle_meta(session_id, make, model, year, mods)
         vehicle_context = get_vehicle_context(session_id)
 
-        history, conv_id = get_or_create_history(session_id, vehicle_context)
+        history, conv_id = get_or_create_history(session_id, vehicle_context, audience="pro")
         has_user_before  = any(m["role"] == "user" for m in history)
 
         parts = []
