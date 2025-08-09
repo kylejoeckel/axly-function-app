@@ -12,7 +12,7 @@ import openai
 # ────────────────────────────────────────────────────────────
 #  Global initialisation – runs only once per Functions host
 # ────────────────────────────────────────────────────────────
-load_dotenv()                                     # .env → environment
+load_dotenv()                                   
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 logging.basicConfig(level=logging.INFO)

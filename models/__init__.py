@@ -6,3 +6,4 @@ from .mod import VehicleMod, ModDocument, ModsLibrary
 from .conversation import Conversation
 from .message import Message
 from .email_verification import EmailVerification
+from .vehicle_image import VehicleImage

@@ -1,44 +1,58 @@
-alembic==1.16.4
-altgraph @ file:///AppleInternal/Library/BuildRoots/39d9dc1a-2111-11f0-be06-226177e5bb69/Library/Caches/com.apple.xbs/Sources/python3/altgraph-0.17.2-py2.py3-none-any.whl
-annotated-types==0.7.0
-anyio==4.9.0
-bcrypt==4.3.0
-certifi==2025.7.14
-cffi==1.17.1
-click==8.1.8
-cryptography==45.0.5
-distro==1.9.0
-ecdsa==0.19.1
-exceptiongroup==1.3.0
+# --- Core ---
+azure-functions>=1.17.0
+python-dotenv==1.1.1
+
+# --- Web stack (you already use FastAPI/Starlette) ---
 fastapi==0.116.1
-future @ file:///AppleInternal/Library/BuildRoots/39d9dc1a-2111-11f0-be06-226177e5bb69/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
-greenlet==3.2.3
+starlette==0.47.2
+uvicorn==0.35.0
+
+# --- DB / Migrations ---
+SQLAlchemy==2.0.42
+psycopg2-binary==2.9.10
+alembic==1.16.4
+Mako==1.3.10
+
+# --- Auth / Security ---
+bcrypt==4.3.0
+passlib==1.7.4
+python-jose==3.5.0
+PyJWT==2.10.1
+cryptography==45.0.5
+ecdsa==0.19.1
+rsa==4.9.1
+
+# --- HTTP clients ---
+httpx==0.28.1
+requests>=2.31.0
+requests-toolbelt>=1.0.0
+certifi==2025.7.14
+idna==3.10
+sniffio==1.3.1
 h11==0.16.0
 httpcore==1.0.9
-httpx==0.28.1
-idna==3.10
+
+# --- Azure Blob & images ---
+azure-storage-blob==12.20.0
+Pillow>=10.0.0
+
+# --- Misc (keep from your list) ---
+annotated-types==0.7.0
+anyio==4.9.0
+click==8.1.8
+distro==1.9.0
+exceptiongroup==1.3.0
+greenlet==3.2.3
 jiter==0.10.0
 jose==1.0.0
-macholib @ file:///AppleInternal/Library/BuildRoots/39d9dc1a-2111-11f0-be06-226177e5bb69/Library/Caches/com.apple.xbs/Sources/python3/macholib-1.15.2-py2.py3-none-any.whl
-Mako==1.3.10
 MarkupSafe==3.0.2
 openai==1.98.0
-passlib==1.7.4
-psycopg2-binary==2.9.10
 pyasn1==0.6.1
 pycparser==2.22
 pydantic==2.11.7
 pydantic_core==2.33.2
-PyJWT==2.10.1
-python-dotenv==1.1.1
-python-jose==3.5.0
-rsa==4.9.1
-six @ file:///AppleInternal/Library/BuildRoots/39d9dc1a-2111-11f0-be06-226177e5bb69/Library/Caches/com.apple.xbs/Sources/python3/six-1.15.0-py2.py3-none-any.whl
-sniffio==1.3.1
-SQLAlchemy==2.0.42
-starlette==0.47.2
 tomli==2.2.1
 tqdm==4.67.1
 typing-inspection==0.4.1
 typing_extensions==4.14.1
-uvicorn==0.35.0
+reportlab>=4.2.0
