@@ -3,13 +3,19 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from typing import List, Optional, Mapping
-
+from sqlalchemy import exists, and_
 from sqlalchemy.orm import Session, joinedload
-
 from db import SessionLocal
-from models import Vehicle, VehicleMod
+from typing import Iterable, Tuple
+from models import (
+    Vehicle,
+    VehicleMod,
+    VehicleService as Svc,           # alias to avoid name clash with this module
+    ServiceDocument as SvcDoc,
+    ServiceReminder as SvcRem,
+    ServicesLibrary,                 # optional, only used for FK checks if you need
+)
 
-# Explicit field allowlists to prevent stray keys (e.g., "image") from breaking updates
 VEHICLE_FIELDS = {"make", "model", "submodel", "year"}
 MOD_FIELDS     = {"name", "description", "installed_on"}
 
@@ -51,7 +57,7 @@ def get_vehicle(user_id: uuid.UUID, vehicle_id: uuid.UUID) -> Optional[Vehicle]:
     with SessionLocal() as db:
         return (
             db.query(Vehicle)
-            .options(joinedload(Vehicle.mods))
+            .options(joinedload(Vehicle.mods), joinedload(Vehicle.services))
             .filter(Vehicle.id == vehicle_id, Vehicle.user_id == user_id)
             .first()
         )
@@ -149,21 +155,24 @@ def update_mod(
         return rows > 0
 
 
-def delete_mod(user_id: uuid.UUID, vehicle_id: uuid.UUID, mod_id: uuid.UUID) -> bool:
-    with SessionLocal() as db:
+def delete_mod(user_id: _uuid.UUID, vehicle_id: _uuid.UUID, mod_id: _uuid.UUID) -> bool:
+    with SessionLocal() as s:
         rows = (
-            db.query(VehicleMod)
-            .join(Vehicle, Vehicle.id == VehicleMod.vehicle_id)
+            s.query(VehicleMod)
             .filter(
-                Vehicle.user_id == user_id,
-                Vehicle.id == vehicle_id,
                 VehicleMod.id == mod_id,
+                VehicleMod.vehicle_id == vehicle_id,
+                exists().where(
+                    and_(
+                        Vehicle.id == VehicleMod.vehicle_id,
+                        Vehicle.user_id == user_id,
+                    )
+                ),
             )
             .delete(synchronize_session=False)
         )
-        db.commit()
+        s.commit()
         return rows > 0
-
 
 # ───────────── In-memory chat context helpers ──────────────────────────────────
 CAR_META: dict[str, dict] = {}  # session_id -> { make, model, submodel, year, mods }
@@ -190,3 +199,257 @@ def get_vehicle_context(session_id: str) -> str | None:
     car_line = " ".join(p for p in parts if p).strip()
     mods_line = f" (mods: {meta['mods']})" if meta.get("mods") else ""
     return f"Vehicle context: {car_line}{mods_line}"
+# ───────────── SERVICES ───────────────────────────────────────────────────────
+def list_services(user_id: uuid.UUID, vehicle_id: uuid.UUID) -> List[Svc]:
+    with SessionLocal() as db:
+        return (
+            db.query(Svc)
+            .join(Vehicle, Vehicle.id == Svc.vehicle_id)
+            .filter(Vehicle.user_id == user_id, Vehicle.id == vehicle_id)
+            .order_by(Svc.created_at.desc())
+            .all()
+        )
+
+
+def add_service(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    *,
+    name: str,
+    description: Optional[str] = None,
+    performed_on: Optional[date] = None,
+    odometer_miles: Optional[int] = None,
+    cost_cents: Optional[int] = None,
+    currency: Optional[str] = None,
+    service_library_id: Optional[uuid.UUID] = None,
+) -> Optional[Svc]:
+    with SessionLocal() as db:
+        v = (
+            db.query(Vehicle)
+            .filter(Vehicle.id == vehicle_id, Vehicle.user_id == user_id)
+            .first()
+        )
+        if not v:
+            return None
+
+        rec = Svc(
+            vehicle_id=vehicle_id,
+            name=name,
+            description=description or None,
+            performed_on=performed_on,
+            odometer_miles=odometer_miles,
+            cost_cents=cost_cents,
+            currency=currency or None,
+            service_library_id=service_library_id,
+        )
+        db.add(rec)
+        db.commit()
+        db.refresh(rec)
+        return rec
+
+
+def update_service(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    service_id: uuid.UUID,
+    patch: Mapping,
+) -> bool:
+    patch = _sanitize_patch(dict(patch or {}), SERVICE_FIELDS)
+    if not patch:
+        return True
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(Svc)
+            .join(Vehicle, Vehicle.id == Svc.vehicle_id)
+            .filter(
+                Vehicle.user_id == user_id,
+                Vehicle.id == vehicle_id,
+                Svc.id == service_id,
+            )
+            .update(patch, synchronize_session=False)
+        )
+        db.commit()
+        return rows > 0
+
+
+def delete_service(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    service_id: uuid.UUID,
+) -> bool:
+    with SessionLocal() as s:
+        rows = (
+            s.query(Svc)
+            .filter(
+                Svc.id == service_id,
+                Svc.vehicle_id == vehicle_id,
+                exists().where(
+                    and_(
+                        Vehicle.id == Svc.vehicle_id,
+                        Vehicle.user_id == user_id,
+                    )
+                ),
+            )
+            .delete(synchronize_session=False)
+        )
+        s.commit()
+        return rows > 0
+
+# ───────────── SERVICE DOCUMENTS ──────────────────────────────────────────────
+def list_service_documents(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    service_id: uuid.UUID,
+) -> List[SvcDoc]:
+    with SessionLocal() as db:
+        # Ensure scoping to the user's vehicle
+        return (
+            db.query(SvcDoc)
+            .join(Svc, Svc.id == SvcDoc.service_id)
+            .join(Vehicle, Vehicle.id == Svc.vehicle_id)
+            .filter(
+                Vehicle.user_id == user_id,
+                Vehicle.id == vehicle_id,
+                Svc.id == service_id,
+            )
+            .order_by(SvcDoc.uploaded_at.desc())
+            .all()
+        )
+
+
+def delete_service_document(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    service_id: uuid.UUID,
+    doc_id: uuid.UUID,
+) -> bool:
+    with SessionLocal() as s:
+        rows = (
+            s.query(SvcDoc)
+            .join(Svc, Svc.id == SvcDoc.service_id)
+            .filter(
+                SvcDoc.id == doc_id,
+                SvcDoc.service_id == service_id,
+                exists().where(
+                    and_(
+                        Vehicle.id == Svc.vehicle_id,
+                        Vehicle.user_id == user_id,
+                        Vehicle.id == vehicle_id,
+                    )
+                ),
+            )
+            .delete(synchronize_session=False)
+        )
+        s.commit()
+        return rows > 0
+
+# ───────────── SERVICE REMINDERS ──────────────────────────────────────────────
+def list_service_reminders(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+) -> List[SvcRem]:
+    with SessionLocal() as db:
+        return (
+            db.query(SvcRem)
+            .join(Vehicle, Vehicle.id == SvcRem.vehicle_id)
+            .filter(Vehicle.user_id == user_id, Vehicle.id == vehicle_id)
+            .order_by(SvcRem.created_at.desc())
+            .all()
+        )
+
+
+def add_service_reminder(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    *,
+    name: str,
+    notes: Optional[str] = None,
+    interval_miles: Optional[int] = None,
+    interval_months: Optional[int] = None,
+    last_performed_on: Optional[date] = None,
+    last_odometer: Optional[int] = None,
+    next_due_on: Optional[date] = None,
+    next_due_miles: Optional[int] = None,
+    remind_ahead_miles: Optional[int] = None,
+    remind_ahead_days: Optional[int] = None,
+    is_active: bool = True,
+    service_library_id: Optional[uuid.UUID] = None,
+) -> SvcRem:
+    with SessionLocal() as db:
+        v = (
+            db.query(Vehicle)
+            .filter(Vehicle.id == vehicle_id, Vehicle.user_id == user_id)
+            .first()
+        )
+        if not v:
+            raise ValueError("Vehicle not found")
+
+        rec = SvcRem(
+            vehicle_id=vehicle_id,
+            name=name,
+            notes=notes or None,
+            interval_miles=interval_miles,
+            interval_months=interval_months,
+            last_performed_on=last_performed_on,
+            last_odometer=last_odometer,
+            next_due_on=next_due_on,
+            next_due_miles=next_due_miles,
+            remind_ahead_miles=remind_ahead_miles,
+            remind_ahead_days=remind_ahead_days,
+            is_active=is_active,
+            service_library_id=service_library_id,
+        )
+        db.add(rec)
+        db.commit()
+        db.refresh(rec)
+        return rec
+
+
+def update_service_reminder(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    reminder_id: uuid.UUID,
+    patch: Mapping,
+) -> bool:
+    patch = _sanitize_patch(dict(patch or {}), SERVICE_REM_FIELDS)
+    if not patch:
+        return True
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(SvcRem)
+            .join(Vehicle, Vehicle.id == SvcRem.vehicle_id)
+            .filter(
+                Vehicle.user_id == user_id,
+                Vehicle.id == vehicle_id,
+                SvcRem.id == reminder_id,
+            )
+            .update(patch, synchronize_session=False)
+        )
+        db.commit()
+        return rows > 0
+
+
+def delete_service_reminder(
+    user_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    reminder_id: uuid.UUID,
+) -> bool:
+    with SessionLocal() as s:
+        rows = (
+            s.query(SvcRem)
+            .filter(
+                SvcRem.id == reminder_id,
+                SvcRem.vehicle_id == vehicle_id,
+                exists().where(
+                    and_(
+                        Vehicle.id == SvcRem.vehicle_id,
+                        Vehicle.user_id == user_id,
+                    )
+                ),
+            )
+            .delete(synchronize_session=False)
+        )
+        s.commit()
+        return rows > 0

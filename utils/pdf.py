@@ -23,6 +23,13 @@ from reportlab.platypus import (
 
 logger = logging.getLogger(__name__)
 
+# Try to import the SA error so we can handle detached access gracefully
+try:
+    from sqlalchemy.orm.exc import DetachedInstanceError
+except Exception:  # pragma: no cover
+    class DetachedInstanceError(Exception):  # type: ignore
+        pass
+
 # Replace “smart” characters so missing glyphs don’t render as boxes
 _REPLACEMENTS = str.maketrans({
     "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2013": "-", "\u2014": "-", "\u2015": "-",
@@ -50,22 +57,53 @@ def _fmt(v: Any, unit: str | None = None, digits: int | None = None) -> str:
         return "N/A"
     return f"{s} {unit}".strip() if unit else s
 
+def _money(v: Any) -> str:
+    try:
+        return f"${float(v):,.2f}"
+    except Exception:
+        return _na(v)
+
+def _fmt_date(dt: Any) -> str:
+    if dt is None:
+        return "N/A"
+    try:
+        if hasattr(dt, "strftime"):
+            return dt.strftime("%Y-%m-%d")
+        # fallbacks for strings / other types
+        s = str(dt)
+        if "T" in s:
+            return s.split("T", 1)[0]
+        return s
+    except Exception:
+        return "N/A"
+
+def _safe_rel(obj: Any, attr: str) -> List[Any]:
+    """Return a list for relationship attr, avoiding DetachedInstanceError."""
+    try:
+        rel = getattr(obj, attr, None)
+        if rel is None:
+            return []
+        # Materialize to a plain list so we don't re-touch the session later
+        return list(rel)
+    except DetachedInstanceError:
+        logger.debug("Relationship %s is detached; returning empty list", attr)
+        return []
+    except Exception:
+        logger.exception("Failed to read relationship %s", attr)
+        return []
+
 # ────────────────────────────────────────────────────────────
 # OpenAI estimate helper (chat.completions pattern)
 # ────────────────────────────────────────────────────────────
 
 def _strip_code_fences(s: str) -> str:
-    """Best-effort to pull JSON out of a response that might include code fences."""
     if not s:
         return s
     s = s.strip()
     if s.startswith("```"):
-        # find the last fence
         parts = s.split("```")
-        # content between the first and last fence
         if len(parts) >= 3:
             return parts[1].strip() if parts[0] == "" else parts[2].strip()
-    # Also try to locate the first '{' and last '}' as a fallback
     try:
         i = s.index("{")
         j = s.rindex("}")
@@ -81,20 +119,6 @@ def _clamp(num: Any, lo: float, hi: float) -> Optional[float]:
         return None
 
 def _estimate_vehicle_performance(vehicle) -> Optional[Dict[str, Any]]:
-    """
-    Ask ChatGPT for estimated performance based on make/model/submodel/year and mods.
-    Returns dict or None on failure:
-      {
-        "estimated_hp": 310,
-        "estimated_torque_lbft": 295,
-        "est_0_60_sec": 5.7,
-        "est_quarter_mile_sec": 14.1,
-        "est_quarter_mile_mph": 100.5,
-        "est_top_speed_mph": 145,
-        "confidence": "medium",
-        "assumptions": ["...","..."]
-      }
-    """
     if os.getenv("DISABLE_VEHICLE_PERF_ESTIMATES", "").lower() in {"1", "true", "yes"}:
         return None
 
@@ -113,7 +137,6 @@ def _estimate_vehicle_performance(vehicle) -> Optional[Dict[str, Any]]:
     except Exception:
         pass
 
-    # Follow your Diagnose pattern: openai.chat.completions.create(...)
     model_name = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     system_msg = {
@@ -122,7 +145,7 @@ def _estimate_vehicle_performance(vehicle) -> Optional[Dict[str, Any]]:
             "You are an automotive analyst. Provide conservative, realistic performance "
             "estimates for the specified vehicle and installed modifications.\n"
             "IMPORTANT:\n"
-            "• Reply with **JSON only**, no prose, no code fences.\n"
+            "• Reply with JSON only, no prose, no code fences.\n"
             "• Use imperial units (hp, lb-ft, mph, seconds).\n"
             "• If uncertain, reflect that via 'confidence' and 'assumptions'."
         )
@@ -166,7 +189,6 @@ def _estimate_vehicle_performance(vehicle) -> Optional[Dict[str, Any]]:
         content = _strip_code_fences(content)
         data = json.loads(content)
 
-        # Sanity clamp the numbers to avoid absurd outputs
         data["estimated_hp"]          = _clamp(data.get("estimated_hp"), 40, 2000)
         data["estimated_torque_lbft"] = _clamp(data.get("estimated_torque_lbft"), 40, 2000)
         data["est_0_60_sec"]          = _clamp(data.get("est_0_60_sec"), 1.8, 25)
@@ -174,7 +196,6 @@ def _estimate_vehicle_performance(vehicle) -> Optional[Dict[str, Any]]:
         data["est_quarter_mile_mph"]  = _clamp(data.get("est_quarter_mile_mph"), 40, 300)
         data["est_top_speed_mph"]     = _clamp(data.get("est_top_speed_mph"), 60, 300)
 
-        # Normalize optional fields
         if not isinstance(data.get("assumptions"), list):
             data["assumptions"] = []
         if not isinstance(data.get("confidence"), str) or not data["confidence"]:
@@ -191,13 +212,30 @@ def _estimate_vehicle_performance(vehicle) -> Optional[Dict[str, Any]]:
 # PDF builder
 # ────────────────────────────────────────────────────────────
 
-def build_vehicle_spec_pdf(vehicle, image_bytes: Optional[bytes] = None) -> bytes:
+def build_vehicle_spec_pdf(
+    vehicle,
+    image_bytes: Optional[bytes] = None,
+    *,
+    mods: Optional[List[Any]] = None,
+    services: Optional[List[Any]] = None,
+) -> bytes:
+    """
+    Build a PDF for the given vehicle.
+    Pass in preloaded 'mods' and 'services' to avoid DetachedInstanceError
+    when the SQLAlchemy session is no longer active.
+    """
     buf = io.BytesIO()
 
     make     = _na(getattr(vehicle, 'make', ''))
     model    = _na(getattr(vehicle, 'model', ''))
     submodel = _clean(getattr(vehicle, 'submodel', None)) or ""
     year     = _na(getattr(vehicle, 'year', ''))
+
+    # If caller didn't pass lists, try to read them safely (may be empty if detached)
+    if mods is None:
+        mods = _safe_rel(vehicle, "mods")
+    if services is None:
+        services = _safe_rel(vehicle, "services")
 
     # Title for PDF metadata
     title_bits = [year, make, model]
@@ -272,15 +310,75 @@ def build_vehicle_spec_pdf(vehicle, image_bytes: Optional[bytes] = None) -> byte
     story.append(tbl)
     story.append(Spacer(1, 0.25 * inch))
 
-    # AI‑estimated performance
+    # AI‑estimated performance (optional)
     est = None
     try:
         est = _estimate_vehicle_performance(vehicle)
     except Exception:
         logger.exception("estimate_vehicle_performance raised unexpectedly")
 
-    # Mods table
-    mods = getattr(vehicle, "mods", None)
+    # ── Service history
+    if services:
+        story.append(Paragraph("<b>Service History</b>", h3_left))
+
+        rows = [["Service", "Notes", "Performed On", "Odometer", "Cost"]]
+        for s in services:
+            name = _na(getattr(s, "name", None) or getattr(s, "title", None))
+
+            notes_raw = (
+                getattr(s, "description", None)
+                or getattr(s, "notes", None)
+                or getattr(s, "details", None)
+            )
+            notes = Paragraph(_na(notes_raw), styles["Normal"])
+
+            dt = (
+                getattr(s, "performed_on", None)
+                or getattr(s, "date", None)
+                or getattr(s, "service_date", None)
+                or getattr(s, "created_at", None)
+            )
+            performed_on = _fmt_date(dt)
+
+            odo = (
+                getattr(s, "odometer", None)
+                or getattr(s, "mileage", None)
+                or getattr(s, "miles", None)
+            )
+            odometer = _fmt(odo, "mi")
+
+            cost_val = (
+                getattr(s, "cost", None)
+                or getattr(s, "price", None)
+                or getattr(s, "amount", None)
+            )
+            cost = _money(cost_val)
+
+            rows.append([name, notes, performed_on, odometer, cost])
+
+        services_tbl = Table(
+            rows,
+            colWidths=[1.4 * inch, None, 1.1 * inch, 0.9 * inch, 0.9 * inch],
+            repeatRows=1,
+        )
+        services_tbl.hAlign = "LEFT"
+        services_tbl.setStyle(TableStyle([
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("BACKGROUND", (0, 0), (-1, 0), colors.whitesmoke),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 10),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.lightgrey),
+            ("FONTSIZE", (0, 1), (-1, -1), 9),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(services_tbl)
+        story.append(Spacer(1, 0.2 * inch))
+
+    # ── Mods table
     if mods:
         story.append(Paragraph("<b>Installed Modifications</b>", h3_left))
         rows = [["Name", "Description", "Installed On"]]
@@ -288,7 +386,7 @@ def build_vehicle_spec_pdf(vehicle, image_bytes: Optional[bytes] = None) -> byte
             rows.append([
                 _na(getattr(m, "name", None)),
                 _na(getattr(m, "description", None)),
-                getattr(m, "installed_on", None).isoformat() if getattr(m, "installed_on", None) else "N/A",
+                _fmt_date(getattr(m, "installed_on", None)),
             ])
         mods_tbl = Table(rows, colWidths=[1.6 * inch, None, 1.2 * inch])
         mods_tbl.hAlign = "LEFT"
@@ -308,6 +406,7 @@ def build_vehicle_spec_pdf(vehicle, image_bytes: Optional[bytes] = None) -> byte
         story.append(mods_tbl)
         story.append(Spacer(1, 0.2 * inch))
 
+    # ── Estimated performance
     if est:
         story.append(Paragraph("<b>Estimated Performance (including mods and sub-model)</b>", h3_left))
         perf_rows = [
@@ -333,7 +432,6 @@ def build_vehicle_spec_pdf(vehicle, image_bytes: Optional[bytes] = None) -> byte
         ]))
         story.append(perf_tbl)
 
-        # Assumptions
         assumptions = est.get("assumptions") or []
         if assumptions:
             story.append(Spacer(1, 0.08 * inch))
@@ -343,14 +441,12 @@ def build_vehicle_spec_pdf(vehicle, image_bytes: Optional[bytes] = None) -> byte
             ))
         story.append(Spacer(1, 0.2 * inch))
 
-        # Small disclaimer + model used
         model_used = est.get("_model_used") or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         story.append(Paragraph(
             f"<font size='8' color='gray'>AI estimates are approximate and for reference only. Model: {model_used}</font>",
             small_gray,
         ))
         story.append(Spacer(1, 0.25 * inch))
-
 
     # Footer
     gen = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")

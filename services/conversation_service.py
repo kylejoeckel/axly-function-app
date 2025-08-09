@@ -10,10 +10,12 @@ Assumes:
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import uuid
 from typing import List, Optional, Tuple
 
+from sqlalchemy import func as sa_func
 from sqlalchemy.orm import Session, joinedload
 import openai
 
@@ -24,7 +26,9 @@ from models import Conversation, Message, User, Vehicle
 # Internal helpers
 # ────────────────────────────────────────────────────────────────────────────────
 
-
+def get_conversation(db: Session, conversation_id: uuid.UUID) -> Conversation | None:
+    return db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    
 def _ensure_conversation(
     db: Session,
     session_id: Optional[str],
@@ -53,6 +57,8 @@ def _ensure_conversation(
     return conv
 
 
+# services/conversation_service.py
+
 def _load_message_history(db: Session, conv: Conversation) -> List[dict]:
     """
     Convert Message rows to the chat-API dicts you’ve been using.
@@ -63,7 +69,25 @@ def _load_message_history(db: Session, conv: Conversation) -> List[dict]:
         .order_by(Message.created_at.asc())
         .all()
     )
-    return [{"role": m.sender, "content": json.loads(m.message)} for m in rows]
+
+    history: List[dict] = []
+    for m in rows:
+        # Robust JSON parsing (old rows might be plain text)
+        try:
+            content = json.loads(m.message)
+        except Exception:
+            content = m.message
+
+        role = m.sender
+        if role == "ai":
+            role = "assistant"
+        elif role == "human":
+            role = "user"
+        # keep 'system', 'assistant', 'user' as-is
+
+        history.append({"role": role, "content": content})
+    return history
+
 
 
 def _save_message(
@@ -81,6 +105,22 @@ def _save_message(
     db.add(msg)
 
 
+MONTHLY_CONV_LIMIT = 20
+MAX_MSGS_PER_CONVERSATION = 50  # total stored messages (user + ai)
+
+def count_user_conversations_this_month(db: Session, user_id: uuid.UUID) -> int:
+    now = _dt.datetime.utcnow()
+    month_start = _dt.datetime(year=now.year, month=now.month, day=1)
+    q = (
+        db.query(sa_func.count(Conversation.id))
+        .filter(Conversation.user_id == user_id)
+        .filter(Conversation.created_at >= month_start)
+    )
+    return int(q.scalar() or 0)
+
+def count_messages_in_conversation(db: Session, conversation_id: uuid.UUID) -> int:
+    q = db.query(sa_func.count(Message.id)).filter(Message.conversation_id == conversation_id)
+    return int(q.scalar() or 0)
 # ────────────────────────────────────────────────────────────────────────────────
 # Public API – what function_app.py imports
 # ────────────────────────────────────────────────────────────────────────────────

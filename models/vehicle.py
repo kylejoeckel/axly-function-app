@@ -19,3 +19,7 @@ class Vehicle(Base):
     user = relationship("User", back_populates="vehicles")
     mods = relationship("VehicleMod", back_populates="vehicle")
     conversations = relationship("Conversation", back_populates="vehicle")
+    # models/vehicle.py (inside Vehicle class)
+    services = relationship("VehicleService", back_populates="vehicle", cascade="all, delete-orphan")
+    service_reminders = relationship("ServiceReminder", back_populates="vehicle", cascade="all, delete-orphan")
+
