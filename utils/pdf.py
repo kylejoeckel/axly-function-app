@@ -46,7 +46,7 @@ def _na(s: Optional[str]) -> str:
     s2 = _clean(s)
     return s2 if s2.strip() else "N/A"
 
-def _fmt(v: Any, unit: str | None = None, digits: int | None = None) -> str:
+def _fmt(v: Any, unit: Optional[str] = None, digits: Optional[int] = None) -> str:
     if v is None:
         return "N/A"
     try:
@@ -62,20 +62,6 @@ def _money(v: Any) -> str:
         return f"${float(v):,.2f}"
     except Exception:
         return _na(v)
-
-def _fmt_date(dt: Any) -> str:
-    if dt is None:
-        return "N/A"
-    try:
-        if hasattr(dt, "strftime"):
-            return dt.strftime("%Y-%m-%d")
-        # fallbacks for strings / other types
-        s = str(dt)
-        if "T" in s:
-            return s.split("T", 1)[0]
-        return s
-    except Exception:
-        return "N/A"
 
 def _safe_rel(obj: Any, attr: str) -> List[Any]:
     """Return a list for relationship attr, avoiding DetachedInstanceError."""

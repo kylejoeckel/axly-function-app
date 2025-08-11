@@ -2,7 +2,8 @@ import os
 from datetime import datetime, timedelta
 from typing import Optional
 
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from dotenv import load_dotenv
 import logging
 

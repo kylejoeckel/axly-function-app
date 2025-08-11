@@ -33,3 +33,9 @@ app.register_functions(diagnose_bp)
 app.register_functions(conversation_bp)
 app.register_functions(vehicles_bp)
 app.register_functions(auth_bp)
+
+
+@app.function_name(name="Ping")
+@app.route(route="ping", methods=["GET"])
+def ping(req: func.HttpRequest) -> func.HttpResponse:
+    return func.HttpResponse("ok", status_code=200, mimetype="text/plain")

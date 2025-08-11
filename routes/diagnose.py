@@ -26,6 +26,7 @@ from services.vehicle_service import (
 from auth.deps import current_user_from_request
 from db import SessionLocal
 from models import Conversation
+from typing import Optional
 import openai, uuid as _uuid
 
 from routes.state import CONVERSATIONS, CAR_META   # optional, if you still need them
@@ -37,7 +38,7 @@ bp = func.Blueprint()
 #  Diagnose – vehicle-ID-based version
 # ────────────────────────────────────────────────────────────
 
-def _period_end_iso_utc(now: _dt.datetime | None = None) -> str:
+def _period_end_iso_utc(now: Optional[_dt.datetime] = None) -> str:
     # first day of next month, 00:00:00 UTC
     now = now or _dt.datetime.utcnow()
     y, m = now.year, now.month
