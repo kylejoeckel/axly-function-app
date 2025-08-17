@@ -1,16 +1,15 @@
 import azure.functions as func
 import logging, os
 
+logging.basicConfig(level=logging.INFO)
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-# ---- Optional .env only when running locally ----
 def _is_azure():
-    # WEBSITE_INSTANCE_ID exists on Azure; absent locally
     return bool(os.environ.get("WEBSITE_INSTANCE_ID"))
 
 try:
     if not _is_azure():
-        from dotenv import load_dotenv  # optional in cloud
+        from dotenv import load_dotenv 
         try:
             load_dotenv()
         except Exception as e:
@@ -18,7 +17,6 @@ try:
 except Exception as e:
     logging.exception("dotenv import failed (continuing without .env): %s", e)
 
-# ---- Register blueprints defensively so Ping still comes up if one import fails ----
 def _register_blueprints(app: func.FunctionApp):
     def _try(modpath, name):
         try:
