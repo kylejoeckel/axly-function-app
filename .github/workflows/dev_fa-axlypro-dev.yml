@@ -11,34 +11,37 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+    # Build inside the Azure Functions Python build image (matches runtime glibc/openssl)
+    container:
+      image: mcr.microsoft.com/azure-functions/python:4-python3.11-build
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install build tools (zip)
+        run: |
+          apt-get update
+          apt-get install -y zip
 
       - name: Vendor dependencies into .python_packages
         run: |
           python -m pip install -U pip wheel setuptools
           pip install -r requirements.txt -t .python_packages/lib/site-packages
+          # sanity: ensure vendored path is importable
           python - <<'PY'
           import sys, importlib
           sys.path.insert(0, ".python_packages/lib/site-packages")
-          for m in ["sqlalchemy","openai","azure.storage.blob"]:
+          for m in ["sqlalchemy","openai","azure.storage.blob","jwt","cryptography"]:
               importlib.import_module(m)
           print("deps_ok")
           PY
 
-      - name: Pack functions (includes .python_packages)
+      - name: Pack functions (include .python_packages)
         run: |
           zip -r release.zip . \
             -x ".git/*" ".github/*" ".venv/*" "__pycache__/*" "tests/*" "local.settings.json" "*.pyc" "*.pyo" ".DS_Store"
 
-      - name: Show zip contents
+      - name: Show zip contents (top 200)
         run: unzip -l release.zip | sed -n '1,200p'
 
       - uses: actions/upload-artifact@v4
