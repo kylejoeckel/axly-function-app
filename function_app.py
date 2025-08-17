@@ -1,37 +1,36 @@
+import os, sys, logging
 import azure.functions as func
-import logging, os
 
-logging.basicConfig(level=logging.INFO)
+# always flush prints
+print = lambda *a, **k: (__import__("builtins").print)(*a, **{**k, "flush": True})
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-def _is_azure():
-    return bool(os.environ.get("WEBSITE_INSTANCE_ID"))
+# local-only .env
+if not os.environ.get("WEBSITE_INSTANCE_ID"):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        print("dotenv loaded locally")
+    except Exception as e:
+        print(f"dotenv skipped: {e!r}")
 
-# try:
-#     if not _is_azure():
-#         from dotenv import load_dotenv 
-#         try:
-#             load_dotenv()
-#         except Exception as e:
-#             logging.exception("load_dotenv() failed: %s", e)
-# except Exception as e:
-#     logging.exception("dotenv import failed (continuing without .env): %s", e)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
-def _register_blueprints(app: func.FunctionApp):
-    def _try(modpath, name):
-        try:
-            mod = __import__(modpath, fromlist=["bp"])
-            app.register_functions(getattr(mod, "bp"))
-            logging.info("Registered %s", name)
-        except Exception as e:
-            logging.exception("Failed to load %s: %s", modpath, e)
+def _try_register(modpath, name):
+    try:
+        print(f"IMPORT {modpath} ...")
+        mod = __import__(modpath, fromlist=["bp"])
+        bp = getattr(mod, "bp")
+        app.register_functions(bp)
+        print(f"REGISTERED {name}")
+    except Exception as e:
+        import traceback
+        print(f"FAILED {modpath}: {e!r}")
+        traceback.print_exc()
 
-    _try("routes.diagnose", "diagnose")
-    _try("routes.conversation", "conversation")
-    _try("routes.vehicles", "vehicles")
-    _try("routes.auth", "auth")
-
-_register_blueprints(app)
+# isolate auth first
+_try_register("routes.auth", "auth")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])
