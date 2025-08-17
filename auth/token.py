@@ -14,7 +14,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)  # or DEBUG during development
+logging.basicConfig(level=logging.INFO)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
