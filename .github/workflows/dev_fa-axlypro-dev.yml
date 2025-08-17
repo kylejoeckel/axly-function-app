@@ -26,11 +26,11 @@ jobs:
           python -m pip install -U pip wheel setuptools
           pip install -r requirements.txt -t .python_packages/lib/site-packages
           python - <<'PY'
-import importlib
-for m in ["sqlalchemy","openai","azure.storage.blob"]:
-    importlib.import_module(m)
-print("deps_ok")
-PY
+          import importlib
+          for m in ["sqlalchemy","openai","azure.storage.blob"]:
+              importlib.import_module(m)
+          print("deps_ok")
+          PY
 
       - name: Pack functions
         run: |
