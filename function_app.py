@@ -27,12 +27,12 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 # from routes.diagnose     import bp as diagnose_bp
 # from routes.conversation import bp as conversation_bp
 # from routes.vehicles     import bp as vehicles_bp
-# from routes.auth         import bp as auth_bp
+from routes.auth         import bp as auth_bp
 
 # app.register_functions(diagnose_bp)
 # app.register_functions(conversation_bp)
 # app.register_functions(vehicles_bp)
-# app.register_functions(auth_bp)
+app.register_functions(auth_bp)
 
 
 @app.function_name(name="Ping")
