@@ -4,10 +4,10 @@ from typing import Optional
 
 import jwt
 from jwt.exceptions import PyJWTError as JWTError
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import logging
 
-load_dotenv()
+# load_dotenv()
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "fallback-secret-key")
 ALGORITHM = "HS256"
