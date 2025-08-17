@@ -5,18 +5,18 @@ It creates the singleton `FunctionApp` instance, loads shared
 configuration, and registers the blueprints that hold every route.
 """
 import azure.functions as func
-import logging, os
-from dotenv import load_dotenv
-import openai
+# import logging, os
+# from dotenv import load_dotenv
+# import openai
 
 # ────────────────────────────────────────────────────────────
 #  Global initialisation – runs only once per Functions host
 # ────────────────────────────────────────────────────────────
-load_dotenv()                                   
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# load_dotenv()                                   
+# # openai.api_key = os.getenv("OPENAI_API_KEY")
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("micron.autoapp")
+# logging.basicConfig(level=logging.INFO)
+# logger = logging.getLogger("micron.autoapp")
 
 # Create the Function App
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
