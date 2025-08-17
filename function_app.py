@@ -6,13 +6,13 @@ configuration, and registers the blueprints that hold every route.
 """
 import azure.functions as func
 import logging, os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 # import openai
 
 # ────────────────────────────────────────────────────────────
 #  Global initialisation – runs only once per Functions host
 # ────────────────────────────────────────────────────────────
-load_dotenv()                                   
+# load_dotenv()                                   
 # openai.api_key = os.getenv("OPENAI_API_KEY")
 
 logging.basicConfig(level=logging.INFO)
