@@ -26,9 +26,9 @@ def _try(modpath: str, name: str):
 # 🔹 Register AT STARTUP so the Functions host discovers HTTP triggers
 _try("routes.auth", "auth")
 # Add others once auth is good
-# _try("routes.vehicles", "vehicles")
-# _try("routes.conversation", "conversation")
-# _try("routes.diagnose", "diagnose")
+_try("routes.vehicles", "vehicles")
+_try("routes.conversation", "conversation")
+_try("routes.diagnose", "diagnose")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])
