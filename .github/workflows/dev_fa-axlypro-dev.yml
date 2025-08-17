@@ -9,62 +9,28 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
-  build:
+  # Optional: quick verify the tree that will deploy
+  verify:
     runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/azure-functions/python:4-python3.11
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install zip
+      - name: Show tree
         run: |
-          apt-get update
-          apt-get install -y zip
-
-      - name: Vendor dependencies (.python_packages)
-        run: |
-          python -m pip install -U pip wheel setuptools
-          pip install -r requirements.txt -t .python_packages/lib/site-packages
-          python - <<'PY'
-          import sys, importlib, platform, ssl
-          sys.path.insert(0, ".python_packages/lib/site-packages")
-          for m in ["sqlalchemy","openai","azure.storage.blob","jwt","cryptography"]:
-              importlib.import_module(m)
-          print("deps_ok")
-          print(sys.version)
-          print(platform.platform())
-          print(ssl.OPENSSL_VERSION)
-          PY
-
-      - name: Pack artifact
-        run: |
-          zip -r release.zip . \
-            -x ".git/*" ".github/*" ".venv/*" "__pycache__/*" "tests/*" "local.settings.json" "*.pyc" "*.pyo" ".DS_Store"
-
-      - name: Show zip contents
-        run: unzip -l release.zip | sed -n '1,200p'
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: functions-zip
-          path: release.zip
+          printf "\nRepo contents that will deploy:\n"
+          find . -maxdepth 2 -mindepth 1 -printf "%y %p\n" | sort
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build
+    needs: verify
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: functions-zip
+      - uses: actions/checkout@v4
 
-      - name: Verify artifact contents
-        run: unzip -l release.zip | sed -n '1,200p'
+      # (No pip install, no zip — push source and let Oryx build on Azure)
 
-      - name: Deploy to Azure Functions (zip)
+      - name: Deploy to Azure Functions (remote build)
         uses: Azure/functions-action@v1
         with:
           app-name: fa-axlypro-dev
           slot-name: Production
-          package: release.zip
+          package: .                      # <- send source folder
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_35E87DD2479C44D09B392391320E180B }}

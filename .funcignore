@@ -1,0 +1,9 @@
+.venv/
+.python_packages/
+__pycache__/
+*.pyc
+tests/
+local.settings.json
+.git/
+.github/
+.DS_Store
