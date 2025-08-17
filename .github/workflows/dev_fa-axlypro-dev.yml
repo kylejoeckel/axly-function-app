@@ -21,16 +21,21 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Create venv
+      - name: Vendor dependencies
         run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install -r requirements.txt
+          python -m pip install -U pip wheel setuptools
+          pip install -r requirements.txt -t .python_packages/lib/site-packages
+          python - <<'PY'
+import importlib
+for m in ["sqlalchemy","openai","azure.storage.blob"]:
+    importlib.import_module(m)
+print("deps_ok")
+PY
 
-      - name: Pack functions (zip)
+      - name: Pack functions
         run: |
           zip -r release.zip . \
-            -x ".git/*" ".venv/*" "__pycache__/*" "tests/*" "local.settings.json"
+            -x ".git/*" ".github/*" ".venv/*" "__pycache__/*" "tests/*" "local.settings.json" "*.pyc" "*.pyo" ".DS_Store"
 
       - name: Show zip contents
         run: unzip -l release.zip | sed -n '1,200p'
@@ -52,10 +57,10 @@ jobs:
       - name: Verify artifact contents
         run: unzip -l release.zip | sed -n '1,200p'
 
-      - name: Deploy to Azure Functions (zip deploy)
+      - name: Deploy to Azure Functions (zip)
         uses: Azure/functions-action@v1
         with:
-          app-name: 'fa-axlypro-dev'
-          slot-name: 'Production'
+          app-name: fa-axlypro-dev
+          slot-name: Production
           package: release.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_35E87DD2479C44D09B392391320E180B }}
