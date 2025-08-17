@@ -1,38 +1,39 @@
-import os, sys, logging
+import os, sys, json, traceback
 import azure.functions as func
-
-# always flush prints
-print = lambda *a, **k: (__import__("builtins").print)(*a, **{**k, "flush": True})
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-# local-only .env
-if not os.environ.get("WEBSITE_INSTANCE_ID"):
+if not os.getenv("WEBSITE_INSTANCE_ID"):
     try:
         from dotenv import load_dotenv
         load_dotenv()
-        print("dotenv loaded locally")
-    except Exception as e:
-        print(f"dotenv skipped: {e!r}")
+    except Exception:
+        pass
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+REGISTERED = []
+FAILURES = {}
 
-def _try_register(modpath, name):
+def _try(modpath, name):
     try:
-        print(f"IMPORT {modpath} ...")
         mod = __import__(modpath, fromlist=["bp"])
         bp = getattr(mod, "bp")
         app.register_functions(bp)
-        print(f"REGISTERED {name}")
+        REGISTERED.append(name)
     except Exception as e:
-        import traceback
-        print(f"FAILED {modpath}: {e!r}")
-        traceback.print_exc()
+        FAILURES[name] = {"error": repr(e), "trace": traceback.format_exc()}
 
-# isolate auth first
-_try_register("routes.auth", "auth")
+_try("routes.auth", "auth")
+_try("routes.vehicles", "vehicles")
+_try("routes.conversation", "conversation")
+_try("routes.diagnose", "diagnose")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])
 def ping(req: func.HttpRequest) -> func.HttpResponse:
-    return func.HttpResponse("ok", status_code=200, mimetype="text/plain")
+    return func.HttpResponse("ok", mimetype="text/plain")
+
+@app.function_name(name="Diag")
+@app.route(route="_diag", methods=["GET"])
+def diag(req: func.HttpRequest) -> func.HttpResponse:
+    body = json.dumps({"registered": REGISTERED, "failures": FAILURES}, ensure_ascii=False)
+    return func.HttpResponse(body, status_code=200, mimetype="application/json")
