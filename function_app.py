@@ -7,15 +7,15 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 def _is_azure():
     return bool(os.environ.get("WEBSITE_INSTANCE_ID"))
 
-try:
-    if not _is_azure():
-        from dotenv import load_dotenv 
-        try:
-            load_dotenv()
-        except Exception as e:
-            logging.exception("load_dotenv() failed: %s", e)
-except Exception as e:
-    logging.exception("dotenv import failed (continuing without .env): %s", e)
+# try:
+#     if not _is_azure():
+#         from dotenv import load_dotenv 
+#         try:
+#             load_dotenv()
+#         except Exception as e:
+#             logging.exception("load_dotenv() failed: %s", e)
+# except Exception as e:
+#     logging.exception("dotenv import failed (continuing without .env): %s", e)
 
 def _register_blueprints(app: func.FunctionApp):
     def _try(modpath, name):
