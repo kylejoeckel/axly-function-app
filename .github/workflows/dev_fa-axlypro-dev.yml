@@ -11,11 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ship source only; no vendoring, no zipping
+      # Ship SOURCE, not a prebuilt zip. Oryx will build on Azure.
       - name: Deploy to Azure Functions (remote build)
         uses: Azure/functions-action@v1
         with:
           app-name: fa-axlypro-dev
           slot-name: Production
-          package: .    # <— important: send the folder, not release.zip
+          package: .                          # <— important (a folder)
+          enable-oryx-build: true             # <— ensure Oryx runs
+          respect-funcignore: true            # <— honor .funcignore (optional)
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_35E87DD2479C44D09B392391320E180B }}
