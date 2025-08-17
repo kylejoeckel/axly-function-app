@@ -1,73 +1,61 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-# More info on Python, GitHub Actions, and Azure Functions: https://aka.ms/python-webapps-actions
-
 name: Build and deploy Python project to Azure Function App - fa-axlypro-dev
 
 on:
   push:
-    branches:
-      - dev
+    branches: [dev]
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
-  PYTHON_VERSION: '3.11' # set this to the python version to use (supports 3.6, 3.7, 3.8)
+  PYTHON_VERSION: '3.11'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python version
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Create and start virtual environment
+      - name: Create venv
         run: |
-          python -m venv venv
-          source venv/bin/activate
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -r requirements.txt
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Pack functions (zip)
+        run: |
+          zip -r release.zip . \
+            -x ".git/*" ".venv/*" "__pycache__/*" "tests/*" "local.settings.json"
 
-      # Optional: Add step to run tests here
+      - name: Show zip contents
+        run: unzip -l release.zip | sed -n '1,200p'
 
-      - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: python-app
-          path: |
-            release.zip
-            !venv/
+          name: functions-zip
+          path: release.zip
 
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: python-app
 
-      - name: Unzip artifact for deployment
-        run: unzip release.zip     
-        
-      - name: 'Deploy to Azure Functions'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: functions-zip
+
+      - name: Verify artifact contents
+        run: unzip -l release.zip | sed -n '1,200p'
+
+      - name: Deploy to Azure Functions (zip deploy)
         uses: Azure/functions-action@v1
-        id: deploy-to-function
         with:
           app-name: 'fa-axlypro-dev'
           slot-name: 'Production'
-          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+          package: release.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_35E87DD2479C44D09B392391320E180B }}
