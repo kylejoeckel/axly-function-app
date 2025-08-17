@@ -1,39 +1,39 @@
-"""
-Entry‑point loaded by the Azure Functions host.
-
-It creates the singleton `FunctionApp` instance, loads shared
-configuration, and registers the blueprints that hold every route.
-"""
 import azure.functions as func
 import logging, os
-# from dotenv import load_dotenv
-# import openai
 
-# ────────────────────────────────────────────────────────────
-#  Global initialisation – runs only once per Functions host
-# ────────────────────────────────────────────────────────────
-# load_dotenv()                                   
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("micron.autoapp")
-
-# Create the Function App
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-# ────────────────────────────────────────────────────────────
-#  Register every blueprint (1 per routes/*.py file)
-# ────────────────────────────────────────────────────────────
-# from routes.diagnose     import bp as diagnose_bp
-# from routes.conversation import bp as conversation_bp
-# from routes.vehicles     import bp as vehicles_bp
-from routes.auth         import bp as auth_bp
+# ---- Optional .env only when running locally ----
+def _is_azure():
+    # WEBSITE_INSTANCE_ID exists on Azure; absent locally
+    return bool(os.environ.get("WEBSITE_INSTANCE_ID"))
 
-# app.register_functions(diagnose_bp)
-# app.register_functions(conversation_bp)
-# app.register_functions(vehicles_bp)
-app.register_functions(auth_bp)
+try:
+    if not _is_azure():
+        from dotenv import load_dotenv  # optional in cloud
+        try:
+            load_dotenv()
+        except Exception as e:
+            logging.exception("load_dotenv() failed: %s", e)
+except Exception as e:
+    logging.exception("dotenv import failed (continuing without .env): %s", e)
 
+# ---- Register blueprints defensively so Ping still comes up if one import fails ----
+def _register_blueprints(app: func.FunctionApp):
+    def _try(modpath, name):
+        try:
+            mod = __import__(modpath, fromlist=["bp"])
+            app.register_functions(getattr(mod, "bp"))
+            logging.info("Registered %s", name)
+        except Exception as e:
+            logging.exception("Failed to load %s: %s", modpath, e)
+
+    _try("routes.diagnose", "diagnose")
+    _try("routes.conversation", "conversation")
+    _try("routes.vehicles", "vehicles")
+    _try("routes.auth", "auth")
+
+_register_blueprints(app)
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])

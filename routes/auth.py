@@ -5,7 +5,7 @@ from utils.cors import cors_response
 from services.email_verification_service import create_verification_pin
 from auth.utils import hash_password, verify_password
 from auth.token import create_access_token
-from auth.deps import current_user_from_request  # used only by /logout here
+from auth.deps import current_user_from_request
 from db import SessionLocal
 from models import User, EmailVerification
 
