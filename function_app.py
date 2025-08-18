@@ -3,7 +3,6 @@ import azure.functions as func
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-# Only try dotenv locally (Azure often doesn't set WEBSITE_INSTANCE_ID; use a broader check)
 IS_AZURE = bool(os.getenv("WEBSITE_SITE_NAME")) or os.getenv("FUNCTIONS_WORKER_RUNTIME") == "python"
 if not IS_AZURE:
     try:
@@ -34,7 +33,6 @@ _try("routes.diagnose", "diagnose")
 def ping(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse("ok", mimetype="text/plain")
 
-# Diagnostics (read-only)
 @app.function_name(name="Diag")
 @app.route(route="_diag", methods=["GET"])
 def diag(req: func.HttpRequest) -> func.HttpResponse:
