@@ -4,16 +4,14 @@ import uuid
 from datetime import date
 from typing import List, Optional, Mapping
 from sqlalchemy import exists, and_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import joinedload
 from db import SessionLocal
-from typing import Iterable, Tuple
 from models import (
     Vehicle,
     VehicleMod,
-    VehicleService as Svc,           # alias to avoid name clash with this module
+    VehicleService as Svc,          
     ServiceDocument as SvcDoc,
     ServiceReminder as SvcRem,
-    ServicesLibrary,                 # optional, only used for FK checks if you need
 )
 
 VEHICLE_FIELDS = {"make", "model", "submodel", "year"}
@@ -67,7 +65,7 @@ def update_vehicle(user_id: uuid.UUID, vehicle_id: uuid.UUID, patch: dict) -> bo
     """Only allow make/model/submodel/year to be updated. Unknown keys are dropped."""
     patch = _sanitize_patch(patch, VEHICLE_FIELDS)
     if not patch:
-        return True  # nothing to change is a no-op success
+        return True  
 
     with SessionLocal() as db:
         rows = (
@@ -175,7 +173,7 @@ def delete_mod(user_id: _uuid.UUID, vehicle_id: _uuid.UUID, mod_id: _uuid.UUID) 
         return rows > 0
 
 # ───────────── In-memory chat context helpers ──────────────────────────────────
-CAR_META: dict[str, dict] = {}  # session_id -> { make, model, submodel, year, mods }
+CAR_META: dict[str, dict] = {}  
 
 def store_vehicle_meta(
     session_id: str,
@@ -303,7 +301,6 @@ def list_service_documents(
     service_id: uuid.UUID,
 ) -> List[SvcDoc]:
     with SessionLocal() as db:
-        # Ensure scoping to the user's vehicle
         return (
             db.query(SvcDoc)
             .join(Svc, Svc.id == SvcDoc.service_id)
