@@ -27,7 +27,7 @@ def _try(modpath: str, name: str):
 _try("routes.auth", "auth")
 _try("routes.vehicles", "vehicles")
 _try("routes.conversation", "conversation")
-# _try("routes.diagnose", "diagnose")
+_try("routes.diagnose", "diagnose")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])
