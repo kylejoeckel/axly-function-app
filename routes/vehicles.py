@@ -267,6 +267,8 @@ def vehicle_image(req: func.HttpRequest) -> func.HttpResponse:
         logger.exception("delete image failed")
         return cors_response("Delete failed", 500)
 
+# Add this to your Azure Function to debug the issue
+
 @bp.function_name(name="VehicleSpecSheet")
 @bp.route(route="vehicles/{vehicle_id}/specsheet", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def vehicle_specsheet(req: func.HttpRequest) -> func.HttpResponse:
@@ -303,13 +305,31 @@ def vehicle_specsheet(req: func.HttpRequest) -> func.HttpResponse:
     filename = f"{'-'.join(name_bits)}-specsheet.pdf".replace(" ", "_")
 
     try:
-        pdf_bytes = build_vehicle_spec_pdf(v, image_bytes=image_bytes)
+        # Add debugging for Azure environment
+        logger.info(f"Generating spec sheet for vehicle {vid}")
+        logger.info(f"OpenAI API key configured: {'OPENAI_API_KEY' in os.environ}")
+        logger.info(f"Performance estimates disabled: {os.getenv('DISABLE_VEHICLE_PERF_ESTIMATES', 'false')}")
+        
+        # Try to generate PDF with error handling
+        pdf_bytes = build_vehicle_spec_pdf(
+            v, 
+            image_bytes=image_bytes,
+            mods=list(v.mods) if hasattr(v, 'mods') and v.mods else [],
+            services=list(v.services) if hasattr(v, 'services') and v.services else []
+        )
+        
+        logger.info(f"PDF generated successfully, size: {len(pdf_bytes)} bytes")
+        
         blob_name = upload_bytes(str(user.id), str(vid), pdf_bytes, "application/pdf", filename)
         url = sas_url(blob_name, minutes=15)
+        
         return cors_response(json.dumps({"url": url, "filename": filename}), 200, "application/json")
-    except Exception:
-        logger.exception("Failed to generate spec sheet")
-        return cors_response("Failed to generate spec sheet", 500)
+        
+    except Exception as e:
+        logger.exception(f"Failed to generate spec sheet: {str(e)}")
+        # Return more specific error information
+        error_msg = f"Failed to generate spec sheet: {type(e).__name__}: {str(e)}"
+        return cors_response(error_msg, 500)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Services collection: GET list / POST create
