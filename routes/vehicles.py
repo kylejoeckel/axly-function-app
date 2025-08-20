@@ -267,69 +267,118 @@ def vehicle_image(req: func.HttpRequest) -> func.HttpResponse:
         logger.exception("delete image failed")
         return cors_response("Delete failed", 500)
 
-# Add this to your Azure Function to debug the issue
-
 @bp.function_name(name="VehicleSpecSheet")
 @bp.route(route="vehicles/{vehicle_id}/specsheet", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
 def vehicle_specsheet(req: func.HttpRequest) -> func.HttpResponse:
-    if req.method == "OPTIONS":
-        return cors_response(204)
-
-    user = current_user_from_request(req)
-    if not user:
-        return cors_response("Unauthorized", 401)
-
     try:
-        vid = _uuid.UUID(req.route_params["vehicle_id"])
-    except Exception:
-        return cors_response("Invalid vehicle ID", 400)
-
-    v = get_vehicle(user.id, vid)
-    if not v:
-        return cors_response("Not found", 404)
-
-    image_bytes = None
-    try:
-        img_url = vis.get_primary_image_url(user.id, vid)
-        if img_url:
-            r = requests.get(img_url, timeout=10)
-            if r.ok:
-                image_bytes = r.content
-    except Exception:
-        logger.warning("Specsheet image fetch failed", exc_info=True)
-
-    # include submodel in filename if present
-    name_bits = [v.year, v.make, v.model]
-    if v.submodel:
-        name_bits.append(v.submodel)
-    filename = f"{'-'.join(name_bits)}-specsheet.pdf".replace(" ", "_")
-
-    try:
-        # Add debugging for Azure environment
-        logger.info(f"Generating spec sheet for vehicle {vid}")
-        logger.info(f"OpenAI API key configured: {'OPENAI_API_KEY' in os.environ}")
-        logger.info(f"Performance estimates disabled: {os.getenv('DISABLE_VEHICLE_PERF_ESTIMATES', 'false')}")
+        logger.info("=== VehicleSpecSheet function started ===")
         
-        # Try to generate PDF with error handling
-        pdf_bytes = build_vehicle_spec_pdf(
-            v, 
-            image_bytes=image_bytes,
-            mods=list(v.mods) if hasattr(v, 'mods') and v.mods else [],
-            services=list(v.services) if hasattr(v, 'services') and v.services else []
-        )
+        if req.method == "OPTIONS":
+            logger.info("OPTIONS request, returning CORS response")
+            return cors_response(204)
+
+        logger.info("Authenticating user...")
+        user = current_user_from_request(req)
+        if not user:
+            logger.warning("User authentication failed")
+            return cors_response("Unauthorized", 401)
+        logger.info(f"User authenticated: {user.id}")
+
+        try:
+            vid = _uuid.UUID(req.route_params["vehicle_id"])
+            logger.info(f"Vehicle ID parsed: {vid}")
+        except Exception as e:
+            logger.error(f"Invalid vehicle ID: {e}")
+            return cors_response("Invalid vehicle ID", 400)
+
+        logger.info("Fetching vehicle...")
+        v = get_vehicle(user.id, vid)
+        if not v:
+            logger.warning(f"Vehicle not found for user {user.id}, vehicle {vid}")
+            return cors_response("Not found", 404)
+        logger.info(f"Vehicle found: {v.year} {v.make} {v.model}")
+
+        logger.info("Fetching vehicle image...")
+        image_bytes = None
+        try:
+            img_url = vis.get_primary_image_url(user.id, vid)
+            if img_url:
+                logger.info(f"Image URL found: {img_url}")
+                r = requests.get(img_url, timeout=10)
+                if r.ok:
+                    image_bytes = r.content
+                    logger.info(f"Image downloaded: {len(image_bytes)} bytes")
+                else:
+                    logger.warning(f"Image download failed: {r.status_code}")
+            else:
+                logger.info("No image URL found")
+        except Exception as e:
+            logger.warning(f"Specsheet image fetch failed: {e}", exc_info=True)
+
+        # Generate filename
+        name_bits = [str(v.year), str(v.make), str(v.model)]
+        if v.submodel:
+            name_bits.append(str(v.submodel))
+        filename = f"{'-'.join(name_bits)}-specsheet.pdf".replace(" ", "_")
+        logger.info(f"Generated filename: {filename}")
+
+        logger.info("Loading vehicle relationships...")
+        mods_list = []
+        services_list = []
         
-        logger.info(f"PDF generated successfully, size: {len(pdf_bytes)} bytes")
+        try:
+            if hasattr(v, 'mods') and v.mods:
+                mods_list = list(v.mods)
+                logger.info(f"Loaded {len(mods_list)} mods")
+            else:
+                logger.info("No mods found or attribute missing")
+        except Exception as e:
+            logger.warning(f"Could not load mods: {e}")
+            
+        try:
+            if hasattr(v, 'services') and v.services:
+                services_list = list(v.services)
+                logger.info(f"Loaded {len(services_list)} services")
+            else:
+                logger.info("No services found or attribute missing")
+        except Exception as e:
+            logger.warning(f"Could not load services: {e}")
+
+        logger.info("Generating PDF...")
+        try:
+            pdf_bytes = build_vehicle_spec_pdf(
+                v, 
+                image_bytes=image_bytes,
+                mods=mods_list,
+                services=services_list
+            )
+            logger.info(f"PDF generated successfully: {len(pdf_bytes)} bytes")
+        except Exception as e:
+            logger.error(f"PDF generation failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            return cors_response(f"PDF generation failed: {str(e)}", 500)
         
-        blob_name = upload_bytes(str(user.id), str(vid), pdf_bytes, "application/pdf", filename)
-        url = sas_url(blob_name, minutes=15)
+        logger.info("Uploading to blob storage...")
+        try:
+            blob_name = upload_bytes(str(user.id), str(vid), pdf_bytes, "application/pdf", filename)
+            logger.info(f"Uploaded to blob: {blob_name}")
+        except Exception as e:
+            logger.error(f"Blob upload failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            return cors_response(f"Upload failed: {str(e)}", 500)
         
+        logger.info("Generating SAS URL...")
+        try:
+            url = sas_url(blob_name, minutes=15)
+            logger.info(f"SAS URL generated successfully")
+        except Exception as e:
+            logger.error(f"SAS URL generation failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            return cors_response(f"URL generation failed: {str(e)}", 500)
+        
+        logger.info("=== VehicleSpecSheet function completed successfully ===")
         return cors_response(json.dumps({"url": url, "filename": filename}), 200, "application/json")
         
     except Exception as e:
-        logger.exception(f"Failed to generate spec sheet: {str(e)}")
-        # Return more specific error information
-        error_msg = f"Failed to generate spec sheet: {type(e).__name__}: {str(e)}"
-        return cors_response(error_msg, 500)
+        logger.error(f"Unexpected error in VehicleSpecSheet: {type(e).__name__}: {str(e)}", exc_info=True)
+        return cors_response(f"Internal server error: {str(e)}", 500)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Services collection: GET list / POST create
