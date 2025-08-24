@@ -33,8 +33,7 @@ def _send_email(to: str, subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg["Reply-To"] = EMAIL_REPLY_TO
     msg.set_content(body)
-
-    # TLS (587) or SSL (465)
+    
     if SMTP_PORT == 465:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
@@ -46,7 +45,7 @@ def _send_email(to: str, subject: str, body: str) -> None:
             server.starttls(context=context)
             server.login(SMTP_USER, SMTP_PASS)
             server.send_message(msg, from_addr=EMAIL_FROM, to_addrs=[to])  # envelope-from
-            
+
 def _purpose_strings(purpose: str) -> tuple[str, str]:
     """
     Returns (subject, line) where 'line' is used in the email body.
