@@ -11,9 +11,11 @@ from models import EmailVerification
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER")
+SMTP_USER = os.getenv("SMTP_USER")             # e.g. no-reply@axly.pro (best) or your Gmail (interim)
 SMTP_PASS = os.getenv("SMTP_PASS")
 EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USER or "")
+EMAIL_FROM_NAME = os.getenv("EMAIL_FROM_NAME", "AXLY.pro")
+EMAIL_REPLY_TO = os.getenv("EMAIL_FROM", EMAIL_FROM)
 
 # ────────────────────────────────────────────────────────────
 # Helpers
@@ -23,25 +25,28 @@ def _generate_pin() -> str:
 
 def _send_email(to: str, subject: str, body: str) -> None:
     if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM]):
-        raise RuntimeError("SMTP configuration missing: set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM")
+        raise RuntimeError("SMTP configuration missing")
 
     msg = EmailMessage()
-    msg["From"] = EMAIL_FROM
+    msg["From"] = f'{EMAIL_FROM_NAME} <{EMAIL_FROM}>'
     msg["To"] = to
     msg["Subject"] = subject
+    msg["Reply-To"] = EMAIL_REPLY_TO
     msg.set_content(body)
+
+    # TLS (587) or SSL (465)
     if SMTP_PORT == 465:
         context = ssl.create_default_context()
         with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context) as server:
             server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
+            server.send_message(msg, from_addr=EMAIL_FROM, to_addrs=[to])  # envelope-from
     else:
         context = ssl.create_default_context()
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
             server.starttls(context=context)
             server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-
+            server.send_message(msg, from_addr=EMAIL_FROM, to_addrs=[to])  # envelope-from
+            
 def _purpose_strings(purpose: str) -> tuple[str, str]:
     """
     Returns (subject, line) where 'line' is used in the email body.
