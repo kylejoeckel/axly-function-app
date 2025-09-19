@@ -3,10 +3,10 @@ import json
 from datetime import datetime
 from typing import Optional, Any
 
-from services.blob_service import upload_bytes, sas_url, _container_client
+from services.blob_service import upload_bytes, sas_url, _get_container_client
 from utils.pdf import build_vehicle_spec_pdf
 
-SPEC_PDF_CONTAINER = "spec-pdfs"
+SPEC_PDF_CONTAINER = "vehicle-specs"
 
 def _generate_cache_key(vehicle: Any) -> str:
     """Generate a cache key for the vehicle spec PDF based on its data."""
@@ -61,7 +61,7 @@ def get_or_generate_spec_pdf(
     # Try to get cached version if not forcing regeneration
     if not force_regenerate:
         try:
-            blob_client = _container_client.get_blob_client(blob_name)
+            blob_client = _get_container_client(SPEC_PDF_CONTAINER).get_blob_client(blob_name)
             return blob_client.download_blob().readall()
         except Exception:
             # Cache miss or error, fall through to regenerate
@@ -82,7 +82,8 @@ def get_or_generate_spec_pdf(
             vehicle_id=vehicle_id,
             data=pdf_bytes,
             content_type='application/pdf',
-            original_filename=f"spec_{vehicle_id}.pdf"
+            original_filename=f"spec_{vehicle_id}.pdf",
+            container=SPEC_PDF_CONTAINER
         )
     except Exception:
         # If caching fails, still return the generated PDF
@@ -97,9 +98,9 @@ def get_cached_spec_pdf_url(vehicle: Any, minutes: int = 60) -> Optional[str]:
     blob_name = _get_pdf_blob_name(vehicle_id, cache_key)
     
     try:
-        blob_client = _container_client.get_blob_client(blob_name)
+        blob_client = _get_container_client(SPEC_PDF_CONTAINER).get_blob_client(blob_name)
         if blob_client.exists():
-            return sas_url(blob_name, minutes=minutes)
+            return sas_url(blob_name, minutes=minutes, container=SPEC_PDF_CONTAINER)
     except Exception:
         pass
     

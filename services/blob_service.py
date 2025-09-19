@@ -16,21 +16,29 @@ from azure.storage.blob import (
 # Config
 # ────────────────────────────────────────────────────────────
 _CONN_STR = os.environ.get("AZURE_BLOB_CONN_STRING")
-_CONTAINER = os.environ.get("AZURE_BLOB_CONTAINER", "vehicle-images")
+_DEFAULT_CONTAINER = os.environ.get("AZURE_BLOB_CONTAINER", "vehicle-images")
 
 if not _CONN_STR:
     raise RuntimeError(
         "AZURE_BLOB_CONN_STRING is not set. For Azurite, use the devstore connection string."
     )
 
-# Create client + ensure container exists
+# Create client
 _bsc = BlobServiceClient.from_connection_string(_CONN_STR)
-_container_client = _bsc.get_container_client(_CONTAINER)
-try:
-    _container_client.create_container()
-except Exception:
-    # likely already exists
-    pass
+
+def _get_container_client(container_name: Optional[str] = None) -> Any:
+    """Get or create a container client."""
+    container = container_name or _DEFAULT_CONTAINER
+    client = _bsc.get_container_client(container)
+    try:
+        client.create_container()
+    except Exception:
+        # likely already exists
+        pass
+    return client
+
+# Default container client for backward compatibility
+_container_client = _get_container_client(_DEFAULT_CONTAINER)
 
 
 # ────────────────────────────────────────────────────────────
@@ -65,9 +73,10 @@ def _parse_account(conn_str: str) -> Tuple[str, Optional[str], str]:
 _ACCOUNT_NAME, _ACCOUNT_KEY, _BLOB_ENDPOINT = _parse_account(_CONN_STR)
 
 
-def _blob_url(blob_name: str) -> str:
+def _blob_url(blob_name: str, container: Optional[str] = None) -> str:
     # Standard form: {endpoint}/{container}/{blob_name}
-    return f"{_BLOB_ENDPOINT}/{_CONTAINER}/{blob_name}"
+    container_name = container or _DEFAULT_CONTAINER
+    return f"{_BLOB_ENDPOINT}/{container_name}/{blob_name}"
 
 
 # ────────────────────────────────────────────────────────────
@@ -79,6 +88,7 @@ def upload_bytes(
     data: bytes,
     content_type: str,
     original_filename: Optional[str] = None,
+    container: Optional[str] = None,
 ) -> str:
     """
     Upload raw bytes and return the blob_name you can store in DB.
@@ -86,7 +96,8 @@ def upload_bytes(
     """
     ext = _guess_ext(content_type, ".jpg")
     name = f"users/{user_id}/vehicles/{vehicle_id}/{uuid.uuid4()}{ext}"
-    blob = _container_client.get_blob_client(name)
+    client = _get_container_client(container)
+    blob = client.get_blob_client(name)
     blob.upload_blob(
         data,
         overwrite=False,
@@ -95,32 +106,34 @@ def upload_bytes(
     return name
 
 
-def sas_url(blob_name: str, minutes: int = 60) -> str:
+def sas_url(blob_name: str, minutes: int = 60, container: Optional[str] = None) -> str:
     """
     Generate a read-only SAS URL for the given blob.
     Requires an account key (works with Azurite and key-based Azure accounts).
     """
     if not _ACCOUNT_KEY:
         # Fallback: just return the public URL (works only if container is public; usually not)
-        return _blob_url(blob_name)
-
+        return _blob_url(blob_name, container)
+    
+    container_name = container or _DEFAULT_CONTAINER
     sas = generate_blob_sas(
         account_name=_ACCOUNT_NAME,
-        container_name=_CONTAINER,
+        container_name=container_name,
         blob_name=blob_name,
         account_key=_ACCOUNT_KEY,
         permission=BlobSasPermissions(read=True),
         expiry=datetime.utcnow() + timedelta(minutes=minutes),
     )
-    return f"{_blob_url(blob_name)}?{sas}"
+    return f"{_blob_url(blob_name, container)}?{sas}"
 
 
-def delete_blob(blob_name: str) -> None:
+def delete_blob(blob_name: str, container: Optional[str] = None) -> None:
     """
     Delete a blob; ignores if it doesn't exist.
     """
     try:
-        _container_client.delete_blob(blob_name, delete_snapshots="include")
+        client = _get_container_client(container)
+        client.delete_blob(blob_name, delete_snapshots="include")
     except Exception:
         # Best-effort delete
         pass

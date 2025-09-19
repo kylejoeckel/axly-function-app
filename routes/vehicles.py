@@ -364,6 +364,7 @@ def vehicle_specsheet(req: func.HttpRequest) -> func.HttpResponse:
         try:
             # Use a temp location for downloaded PDFs
             blob_name = f"temp-downloads/{user.id}/{vid}/{_uuid.uuid4()}.pdf"
+            # Upload the temp file explicitly to the default container
             upload_bytes(str(user.id), str(vid), pdf_bytes, "application/pdf", filename)
             url = sas_url(blob_name, minutes=15)  # Short expiry for temp download URLs
             logger.info(f"Temporary download URL generated")
