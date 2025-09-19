@@ -54,6 +54,7 @@ def vehicles(req: func.HttpRequest) -> func.HttpResponse:
                     "model":      v.model,
                     "submodel":   v.submodel,
                     "year":       v.year,
+                    "vin":        v.vin,
                     "image":      vis.get_primary_image_url(user.id, v.id) or None,
                     "created_at": v.created_at.isoformat(),
                 }
@@ -69,9 +70,10 @@ def vehicles(req: func.HttpRequest) -> func.HttpResponse:
     model    = body.get("model")
     year     = body.get("year")
     submodel = body.get("submodel")
+    vin      = body.get("vin")
     if not all([make, model, year]):
         return cors_response("Missing make/model/year", 400)
-    v = create_vehicle(user.id, make, model, year, submodel=submodel)
+    v = create_vehicle(user.id, make, model, year, submodel=submodel, vin=vin)
     return cors_response(json.dumps({"id": str(v.id)}), 201, "application/json")
 
 @bp.function_name(name="VehicleItem")
@@ -100,6 +102,7 @@ def vehicle_item(req: func.HttpRequest) -> func.HttpResponse:
                 "model":    v.model,
                 "submodel": v.submodel,
                 "year":     v.year,
+                "vin":      v.vin,
                 "image":    vis.get_primary_image_url(user.id, v.id) or None,
                 "mods": [
                     {

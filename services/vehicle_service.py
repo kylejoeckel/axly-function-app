@@ -14,7 +14,7 @@ from models import (
     ServiceReminder as SvcRem,
 )
 
-VEHICLE_FIELDS = {"make", "model", "submodel", "year"}
+VEHICLE_FIELDS = {"make", "model", "submodel", "year", "vin"}
 MOD_FIELDS     = {"name", "description", "installed_on"}
 
 
@@ -42,9 +42,10 @@ def create_vehicle(
     model: str,
     year: str,
     submodel: Optional[str] = None,
+    vin: Optional[str] = None,
 ) -> Vehicle:
     with SessionLocal() as db:
-        v = Vehicle(user_id=user_id, make=make, model=model, year=year, submodel=submodel)
+        v = Vehicle(user_id=user_id, make=make, model=model, year=year, submodel=submodel, vin=vin)
         db.add(v)
         db.commit()
         db.refresh(v)
