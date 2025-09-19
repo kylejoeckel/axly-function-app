@@ -14,6 +14,7 @@ class Vehicle(Base):
     model = Column(Text, nullable=False)
     submodel = Column(Text, nullable=True)  # NEW
     year = Column(Text, nullable=False)
+    vin_number = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     images = relationship("VehicleImage", back_populates="vehicle", cascade="all, delete-orphan")
     user = relationship("User", back_populates="vehicles")
