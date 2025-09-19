@@ -1,6 +1,6 @@
 import azure.functions as func
 from services.blob_service import upload_bytes, sas_url
-from utils.pdf import build_vehicle_spec_pdf 
+from services.pdf_cache_service import get_or_generate_spec_pdf
 import json, uuid as _uuid, datetime as _dt, logging, requests
 from utils.cors import cors_response
 from auth.deps import current_user_from_request
@@ -347,34 +347,29 @@ def vehicle_specsheet(req: func.HttpRequest) -> func.HttpResponse:
         except Exception as e:
             logger.warning(f"Could not load services: {e}")
 
-        logger.info("Generating PDF...")
+        logger.info("Getting or generating PDF...")
         try:
-            pdf_bytes = build_vehicle_spec_pdf(
-                v, 
+            pdf_bytes = get_or_generate_spec_pdf(
+                v,
                 image_bytes=image_bytes,
-                mods=mods_list,
-                services=services_list
+                force_regenerate=bool(req.params.get('force_regenerate', False))
             )
-            logger.info(f"PDF generated successfully: {len(pdf_bytes)} bytes")
+            logger.info(f"PDF obtained successfully: {len(pdf_bytes)} bytes")
         except Exception as e:
-            logger.error(f"PDF generation failed: {type(e).__name__}: {str(e)}", exc_info=True)
+            logger.error(f"PDF retrieval/generation failed: {type(e).__name__}: {str(e)}", exc_info=True)
             return cors_response(f"PDF generation failed: {str(e)}", 500)
-        
-        logger.info("Uploading to blob storage...")
+
+        # Store in a temporary blob and generate SAS URL
+        logger.info("Creating temporary blob for download...")
         try:
-            blob_name = upload_bytes(str(user.id), str(vid), pdf_bytes, "application/pdf", filename)
-            logger.info(f"Uploaded to blob: {blob_name}")
+            # Use a temp location for downloaded PDFs
+            blob_name = f"temp-downloads/{user.id}/{vid}/{_uuid.uuid4()}.pdf"
+            upload_bytes(str(user.id), str(vid), pdf_bytes, "application/pdf", filename)
+            url = sas_url(blob_name, minutes=15)  # Short expiry for temp download URLs
+            logger.info(f"Temporary download URL generated")
         except Exception as e:
-            logger.error(f"Blob upload failed: {type(e).__name__}: {str(e)}", exc_info=True)
-            return cors_response(f"Upload failed: {str(e)}", 500)
-        
-        logger.info("Generating SAS URL...")
-        try:
-            url = sas_url(blob_name, minutes=15)
-            logger.info(f"SAS URL generated successfully")
-        except Exception as e:
-            logger.error(f"SAS URL generation failed: {type(e).__name__}: {str(e)}", exc_info=True)
-            return cors_response(f"URL generation failed: {str(e)}", 500)
+            logger.error(f"Failed to create temporary download: {type(e).__name__}: {str(e)}", exc_info=True)
+            return cors_response(f"Failed to create download URL: {str(e)}", 500)
         
         logger.info("=== VehicleSpecSheet function completed successfully ===")
         return cors_response(json.dumps({"url": url, "filename": filename}), 200, "application/json")
