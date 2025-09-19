@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, Text, TIMESTAMP, ForeignKey
+from sqlalchemy import Column, Text, TIMESTAMP, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -14,7 +14,7 @@ class Vehicle(Base):
     model = Column(Text, nullable=False)
     submodel = Column(Text, nullable=True)  # NEW
     year = Column(Text, nullable=False)
-    vin_number = Column(Text, nullable=True)
+    vin = Column(String(32), nullable=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     images = relationship("VehicleImage", back_populates="vehicle", cascade="all, delete-orphan")
     user = relationship("User", back_populates="vehicles")
