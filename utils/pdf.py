@@ -214,6 +214,7 @@ def build_vehicle_spec_pdf(
     model = _na(getattr(vehicle, 'model', ''))
     submodel = _clean(getattr(vehicle, 'submodel', None)) or ""
     year = _na(getattr(vehicle, 'year', ''))
+    vin = _clean(getattr(vehicle, 'vin', None)) or ""
 
     if mods is None:
         mods = _safe_rel(vehicle, "mods")
@@ -295,6 +296,7 @@ def build_vehicle_spec_pdf(
         ["Model", model],
         ["Submodel", submodel or "N/A"],
         ["Year", year],
+        ["VIN", vin or "N/A"],
     ]
     tbl = Table(spec_data, colWidths=[1.3 * inch, None])
     tbl.hAlign = "LEFT"
