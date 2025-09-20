@@ -2,7 +2,7 @@
 import os
 import uuid
 import mimetypes
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from datetime import datetime, timedelta
 
 from azure.storage.blob import (
