@@ -11,6 +11,10 @@ class UserRole(enum.Enum):
     USER = "user"
     ADMIN = "admin"
 
+class UserTier(enum.Enum):
+    FREE = "free"
+    PREMIUM = "premium"
+
 class User(Base):
     __tablename__ = "users"
 
@@ -18,6 +22,7 @@ class User(Base):
     email = Column(Text, unique=True, nullable=False)
     password_hash = Column(Text, nullable=True)  # Allow null for App Store-only users
     role = Column(Enum(UserRole), nullable=False, default=UserRole.USER)
+    tier = Column(Enum(UserTier), nullable=False, default=UserTier.FREE)
     created_via_receipt = Column(Boolean, default=False)  # Track if created via App Store
     created_at = Column(TIMESTAMP, server_default=func.now())
 
@@ -45,6 +50,39 @@ class User(Base):
         )
 
     @property
+    def is_free_tier(self) -> bool:
+        """Check if user is on free tier"""
+        return self.tier == UserTier.FREE
+
+    @property
+    def is_premium_tier(self) -> bool:
+        """Check if user is on premium tier"""
+        return self.tier == UserTier.PREMIUM
+
+    @property
     def requires_subscription(self) -> bool:
-        """Check if user requires an active subscription to access the app"""
-        return self.role == UserRole.USER  # Only regular users need subscriptions
+        """Check if user requires an active subscription to access premium features"""
+        return self.role == UserRole.USER and self.tier == UserTier.PREMIUM
+
+    @property
+    def can_add_vehicles(self) -> bool:
+        """Check if user can add more vehicles"""
+        if self.is_admin:
+            return True
+        if self.is_free_tier:
+            return len(self.vehicles) < 1  # Free tier limited to 1 vehicle
+        return True  # Premium tier unlimited
+
+    @property
+    def can_download_spec_sheets(self) -> bool:
+        """Check if user can download vehicle spec sheets"""
+        if self.is_admin:
+            return True
+        return self.is_premium_tier  # Only premium tier can download
+
+    @property
+    def can_use_diagnose(self) -> bool:
+        """Check if user can access diagnose functionality"""
+        if self.is_admin:
+            return True
+        return self.is_premium_tier  # Only premium tier can diagnose

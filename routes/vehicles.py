@@ -4,7 +4,7 @@ from services.pdf_cache_service import get_or_generate_spec_pdf
 import json, uuid as _uuid, datetime as _dt, logging, requests
 from utils.cors import cors_response
 from auth.deps import current_user_from_request
-from auth.subscription_middleware import require_active_subscription
+from auth.subscription_middleware import require_active_subscription, require_premium_tier
 from services.vehicle_service import (
     list_vehicles,
     create_vehicle,
@@ -75,6 +75,19 @@ def vehicles(req: func.HttpRequest) -> func.HttpResponse:
     vin      = body.get("vin")
     if not all([make, model, year]):
         return cors_response("Missing make/model/year", 400)
+
+    # Check if user can add more vehicles (free tier limited to 1)
+    if not user.can_add_vehicles:
+        return cors_response(
+            json.dumps({
+                "error": "Vehicle limit reached",
+                "current_tier": user.tier.value,
+                "max_vehicles": 1 if user.is_free_tier else "unlimited"
+            }),
+            402,  # Payment Required
+            "application/json"
+        )
+
     v = create_vehicle(user.id, make, model, year, submodel=submodel, vin=vin)
     return cors_response(json.dumps({"id": str(v.id)}), 201, "application/json")
 
@@ -274,6 +287,7 @@ def vehicle_image(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.function_name(name="VehicleSpecSheet")
 @bp.route(route="vehicles/{vehicle_id}/specsheet", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@require_premium_tier
 def vehicle_specsheet(req: func.HttpRequest) -> func.HttpResponse:
     try:
         logger.info("=== VehicleSpecSheet function started ===")

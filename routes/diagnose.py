@@ -24,6 +24,7 @@ from services.vehicle_service import (
     get_vehicle,
 )
 from auth.deps import current_user_from_request
+from auth.subscription_middleware import require_premium_tier
 from db import SessionLocal
 from models import Conversation
 from typing import Optional
@@ -50,6 +51,7 @@ def _period_end_iso_utc(now: Optional[_dt.datetime] = None) -> str:
 
 @bp.function_name(name="DiagnoseV2")
 @bp.route(route="diagnose2", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@require_premium_tier
 def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -193,6 +195,7 @@ def diagnose_v2(req: func.HttpRequest) -> func.HttpResponse:
 @bp.function_name(name="Diagnose")
 @bp.route(route="Diagnose", methods=["GET", "POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
+@require_premium_tier
 def diagnose(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_response(204)
