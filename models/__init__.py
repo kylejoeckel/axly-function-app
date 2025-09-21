@@ -1,6 +1,6 @@
 ### models/__init__.py
 from .base import Base
-from .user import User
+from .user import User, UserRole
 from .vehicle import Vehicle
 from .mod import VehicleMod, ModDocument, ModsLibrary
 from .conversation import Conversation
@@ -12,4 +12,11 @@ from .service import (
     VehicleService,
     ServiceDocument,
     ServiceReminder,
+)
+from .subscription import (
+    UserSubscription,
+    ReceiptValidation,
+    AppStoreNotification,
+    SubscriptionPlatform,
+    SubscriptionStatus,
 )

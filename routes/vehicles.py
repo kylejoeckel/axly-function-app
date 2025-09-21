@@ -4,6 +4,7 @@ from services.pdf_cache_service import get_or_generate_spec_pdf
 import json, uuid as _uuid, datetime as _dt, logging, requests
 from utils.cors import cors_response
 from auth.deps import current_user_from_request
+from auth.subscription_middleware import require_active_subscription
 from services.vehicle_service import (
     list_vehicles,
     create_vehicle,
@@ -36,6 +37,7 @@ def _parse_ymd(s: str) -> _dt.date:
 
 @bp.function_name(name="Vehicles")
 @bp.route(route="vehicles", methods=["GET", "POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+@require_active_subscription
 def vehicles(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_response(204)

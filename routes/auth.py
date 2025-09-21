@@ -7,7 +7,7 @@ from auth.utils import hash_password, verify_password
 from auth.token import create_access_token
 from auth.deps import current_user_from_request
 from db import SessionLocal
-from models import User, EmailVerification
+from models import User, EmailVerification, UserRole
 
 logger = logging.getLogger(__name__)
 bp = func.Blueprint()
@@ -74,13 +74,18 @@ def confirm_signup(req: func.HttpRequest) -> func.HttpResponse:
             if existing:
                 return cors_response("User already exists", 400)
 
-            user = User(email=email, password_hash=hash_password(password))
+            user = User(email=email, password_hash=hash_password(password), role=UserRole.USER)
             db.add(user)
             db.delete(record)
             db.commit()
 
             return cors_response(
-                json.dumps({"id": str(user.id), "email": user.email}),
+                json.dumps({
+                    "id": str(user.id),
+                    "email": user.email,
+                    "role": user.role.value,
+                    "is_admin": user.is_admin
+                }),
                 201,
                 "application/json",
             )
@@ -115,7 +120,16 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
 
         token = create_access_token({"sub": str(user.id)})
         return cors_response(
-            json.dumps({"access_token": token, "token_type": "bearer"}),
+            json.dumps({
+                "access_token": token,
+                "token_type": "bearer",
+                "user": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "role": user.role.value,
+                    "is_admin": user.is_admin
+                }
+            }),
             200,
             "application/json",
         )
@@ -305,11 +319,132 @@ def confirm_password_reset(req: func.HttpRequest) -> func.HttpResponse:
             token = create_access_token({"sub": str(user.id)})
 
         return cors_response(
-            json.dumps({"access_token": token, "token_type": "bearer"}),
+            json.dumps({
+                "access_token": token,
+                "token_type": "bearer",
+                "user": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "role": user.role.value,
+                    "is_admin": user.is_admin
+                }
+            }),
             200,
             "application/json",
         )
 
     except Exception as e:
         logger.exception("Failed to confirm password reset")
+        return cors_response(str(e), 500)
+
+# ────────────────────────────────────────────────────────────
+#  ADMIN ENDPOINTS
+# ────────────────────────────────────────────────────────────
+
+@bp.function_name(name="AdminLogin")
+@bp.route(route="admin/login", methods=["POST", "OPTIONS"],
+          auth_level=func.AuthLevel.ANONYMOUS)
+def admin_login(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Admin login endpoint - only allows admin users to authenticate
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    try:
+        data = req.get_json()
+        email = data.get("email").strip().lower()
+        password = data.get("password").strip()
+        if not all([email, password]):
+            return cors_response("Missing email or password", 400)
+
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.email == email).first()
+
+        if not user or not verify_password(password, user.password_hash):
+            return cors_response("Invalid credentials", 401)
+
+        # Check if user is admin
+        if not user.is_admin:
+            return cors_response("Access denied", 403)
+
+        token = create_access_token({"sub": str(user.id)})
+        return cors_response(
+            json.dumps({
+                "access_token": token,
+                "token_type": "bearer",
+                "user": {
+                    "id": str(user.id),
+                    "email": user.email,
+                    "role": user.role.value,
+                    "is_admin": True
+                }
+            }),
+            200,
+            "application/json",
+        )
+
+    except Exception as e:
+        logger.exception("Admin login failed")
+        return cors_response(str(e), 500)
+
+@bp.function_name(name="CreateAdmin")
+@bp.route(route="admin/create", methods=["POST", "OPTIONS"],
+          auth_level=func.AuthLevel.ANONYMOUS)
+def create_admin(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Create admin user endpoint - for initial setup or by existing admins
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    try:
+        # Check if requester is admin (if any admins exist)
+        requester = current_user_from_request(req)
+
+        with SessionLocal() as db:
+            admin_exists = db.query(User).filter(User.role == UserRole.ADMIN).first()
+
+            # If admins exist, require admin auth
+            if admin_exists and (not requester or not requester.is_admin):
+                return cors_response("Admin access required", 403)
+
+        data = req.get_json()
+        email = data.get("email", "").strip().lower()
+        password = data.get("password", "").strip()
+
+        if not all([email, password]):
+            return cors_response("Missing email or password", 400)
+
+        with SessionLocal() as db:
+            # Check if email already exists
+            existing = db.query(User).filter(User.email == email).first()
+            if existing:
+                return cors_response("Email already exists", 409)
+
+            # Create admin user
+            admin_user = User(
+                email=email,
+                password_hash=hash_password(password),
+                role=UserRole.ADMIN
+            )
+            db.add(admin_user)
+            db.commit()
+
+            return cors_response(
+                json.dumps({
+                    "success": True,
+                    "message": "Admin user created successfully",
+                    "user": {
+                        "id": str(admin_user.id),
+                        "email": admin_user.email,
+                        "role": admin_user.role.value
+                    }
+                }),
+                201,
+                "application/json"
+            )
+
+    except Exception as e:
+        logger.exception("Failed to create admin user")
         return cors_response(str(e), 500)

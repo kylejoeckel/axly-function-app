@@ -258,8 +258,17 @@ psql "$DB_URI" -c "\dt"
 | `ASSETS_CONTAINER_MOD_DOCS`     | Container for mod docs                       | `mod-documents`                                                 |
 | `ASSETS_CONTAINER_SERVICE_DOCS` | Container for service docs                   | `service-documents`                                             |
 | `ASSETS_CONTAINER_UPLOADS`      | Container for uploads                        | `diagnose-uploads`                                              |
+| `APP_STORE_SHARED_SECRET`       | Apple App Store shared secret for receipts  | From App Store Connect                                          |
 
 > Azure Postgres: **no extensions required**. We generate UUIDs in app code.
+
+### Apple App Store Integration
+
+Additional environment variables for App Store subscription validation:
+
+| Key                       | Description                                  | Example                                     |
+| ------------------------- | -------------------------------------------- | ------------------------------------------- |
+| `APP_STORE_SHARED_SECRET` | Shared secret from App Store Connect         | Required for receipt validation             |
 
 ---
 

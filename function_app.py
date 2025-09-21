@@ -27,6 +27,7 @@ _try("routes.auth", "auth")
 _try("routes.vehicles", "vehicles")
 _try("routes.conversation", "conversation")
 _try("routes.diagnose", "diagnose")
+_try("routes.subscriptions", "subscriptions")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])
