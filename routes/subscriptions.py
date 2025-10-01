@@ -166,6 +166,106 @@ def refresh_subscription(req: func.HttpRequest) -> func.HttpResponse:
             "application/json"
         )
 
+@bp.function_name(name="GetSubscriptionProducts")
+@bp.route(route="subscriptions/products", methods=["GET", "OPTIONS"],
+          auth_level=func.AuthLevel.ANONYMOUS)
+def get_subscription_products(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Get available subscription products with metadata
+    This supplements the pricing/availability from react-native-iap
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    try:
+        products = [
+            {
+                "product_id": "com.axly.premium.monthly",
+                "name": "AXLY Pro Monthly",
+                "description": "Complete vehicle diagnostics and AI-powered analysis",
+                "features": [
+                    "Unlimited vehicle profiles",
+                    "AI-powered diagnostic analysis",
+                    "Live OBD2 data monitoring",
+                    "Complete trouble code database",
+                    "Service reminders & tracking",
+                    "Priority customer support"
+                ],
+                "billing_period": "monthly",
+                "billing_period_unit": "month",
+                "popular": True,
+                "recommended": True,
+                "savings_text": None,
+                "trial_available": False,
+                "sort_order": 2
+            },
+            {
+                "product_id": "com.axly.premium.yearly",
+                "name": "AXLY Pro Yearly",
+                "description": "Best value - complete access with annual billing",
+                "features": [
+                    "All monthly features included",
+                    "Save up to 40% vs monthly billing",
+                    "Extended warranty lookup",
+                    "Advanced repair cost estimates",
+                    "Maintenance scheduling assistant",
+                    "VIP customer support"
+                ],
+                "billing_period": "yearly",
+                "billing_period_unit": "year",
+                "popular": False,
+                "recommended": False,
+                "savings_text": "Save 40%",
+                "trial_available": False,
+                "sort_order": 3
+            },
+            {
+                "product_id": "com.axly.premium.weekly",
+                "name": "AXLY Pro Weekly",
+                "description": "Short-term access for specific diagnostic needs",
+                "features": [
+                    "All Pro features for 7 days",
+                    "Perfect for specific repairs",
+                    "No long-term commitment",
+                    "Full feature access",
+                    "Standard customer support"
+                ],
+                "billing_period": "weekly",
+                "billing_period_unit": "week",
+                "popular": False,
+                "recommended": False,
+                "savings_text": None,
+                "trial_available": False,
+                "sort_order": 1
+            }
+        ]
+
+        # Sort by sort_order
+        products.sort(key=lambda x: x['sort_order'])
+
+        return cors_response(
+            json.dumps({
+                "success": True,
+                "products": products,
+                "total_count": len(products),
+                "updated_at": "2025-01-01T00:00:00Z"  # Could be dynamic
+            }),
+            200,
+            "application/json"
+        )
+
+    except Exception as e:
+        logger.exception("Failed to get subscription products")
+        return cors_response(
+            json.dumps({
+                "success": False,
+                "message": "Failed to load subscription products",
+                "products": []
+            }),
+            500,
+            "application/json"
+        )
+
 @bp.function_name(name="AppStoreWebhook")
 @bp.route(route="webhooks/app_store", methods=["POST"],
           auth_level=func.AuthLevel.ANONYMOUS)
