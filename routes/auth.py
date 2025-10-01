@@ -3,6 +3,7 @@ import json, logging
 from datetime import datetime
 from utils.cors import cors_response
 from services.email_verification_service import create_verification_pin
+from services.app_store_service import app_store_service
 from auth.utils import hash_password, verify_password
 from auth.token import create_access_token
 from auth.deps import current_user_from_request
@@ -119,8 +120,13 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
             return cors_response("Invalid credentials", 401)
 
         token = create_access_token({"sub": str(user.id)})
+
+        # Get user subscription status
+        subscription_status = app_store_service.get_user_subscription_status(str(user.id))
+
         return cors_response(
             json.dumps({
+                "success": True,
                 "access_token": token,
                 "token_type": "bearer",
                 "user": {
@@ -129,6 +135,13 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
                     "role": user.role.value,
                     "tier": user.tier.value,
                     "is_admin": user.is_admin
+                },
+                "subscription": {
+                    "has_active_subscription": subscription_status.get("has_active_subscription", False),
+                    "status": subscription_status.get("status", "expired"),
+                    "expires_date": subscription_status.get("expires_date", ""),
+                    "product_id": subscription_status.get("product_id", ""),
+                    "auto_renew_status": subscription_status.get("auto_renew_status", False)
                 }
             }),
             200,
