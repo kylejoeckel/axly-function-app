@@ -12,8 +12,8 @@ class UserRole(enum.Enum):
     ADMIN = "admin"
 
 class UserTier(enum.Enum):
-    FREE = "free"
-    PREMIUM = "premium"
+    FREE = "FREE"
+    PREMIUM = "PREMIUM"
 
 class User(Base):
     __tablename__ = "users"

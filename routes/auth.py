@@ -127,6 +127,7 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
                     "id": str(user.id),
                     "email": user.email,
                     "role": user.role.value,
+                    "tier": user.tier.value,
                     "is_admin": user.is_admin
                 }
             }),
@@ -326,6 +327,7 @@ def confirm_password_reset(req: func.HttpRequest) -> func.HttpResponse:
                     "id": str(user.id),
                     "email": user.email,
                     "role": user.role.value,
+                    "tier": user.tier.value,
                     "is_admin": user.is_admin
                 }
             }),

@@ -407,6 +407,8 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
                         "user": {
                             "id": str(user.id),
                             "email": user.email,
+                            "role": user.role.value,
+                            "tier": user.tier.value,
                             "created_via_receipt": True
                         },
                         "subscription": subscription_status
@@ -448,6 +450,8 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
                         "user": {
                             "id": str(user.id),
                             "email": user.email,
+                            "role": user.role.value,
+                            "tier": user.tier.value,
                             "created_via_receipt": True,
                             "new_account": True
                         },
