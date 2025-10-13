@@ -1,6 +1,6 @@
 ### models/__init__.py
 from .base import Base
-from .user import User, UserRole
+from .user import User, UserRole, UserTier
 from .vehicle import Vehicle
 from .mod import VehicleMod, ModDocument, ModsLibrary
 from .conversation import Conversation
