@@ -22,12 +22,13 @@ def _try(modpath: str, name: str):
     except Exception as e:
         FAILURES[name] = {"error": repr(e), "trace": traceback.format_exc()}
 
-# 🔹 Register AT STARTUP so the Functions host discovers HTTP triggers
 _try("routes.auth", "auth")
 _try("routes.vehicles", "vehicles")
 _try("routes.conversation", "conversation")
 _try("routes.diagnose", "diagnose")
 _try("routes.subscriptions", "subscriptions")
+_try("routes.stripe_routes", "stripe")
+_try("routes.admin_routes", "admin")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])

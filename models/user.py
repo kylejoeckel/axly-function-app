@@ -29,6 +29,7 @@ class User(Base):
     vehicles = relationship("Vehicle", back_populates="user")
     conversations = relationship("Conversation", back_populates="user")
     subscriptions = relationship("UserSubscription", back_populates="user")
+    stripe_subscription = relationship("StripeSubscription", back_populates="user", uselist=False)
 
     @property
     def is_app_store_only(self) -> bool:

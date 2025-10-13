@@ -6,7 +6,7 @@ from auth.deps import current_user_from_request
 from auth.token import create_access_token
 from services.app_store_service import app_store_service
 from db import SessionLocal
-from models import User, UserSubscription, SubscriptionPlatform
+from models import User, UserSubscription, SubscriptionPlatform, StripeSubscription
 
 logger = logging.getLogger(__name__)
 bp = func.Blueprint()
@@ -116,12 +116,32 @@ def subscription_status(req: func.HttpRequest) -> func.HttpResponse:
         return cors_response("Unauthorized", 401)
 
     try:
-        status = app_store_service.get_user_subscription_status(str(user.id))
-        return cors_response(
-            json.dumps(status),
-            200,
-            "application/json"
-        )
+        with SessionLocal() as db:
+            stripe_sub = db.query(StripeSubscription).filter(
+                StripeSubscription.user_id == user.id
+            ).first()
+
+            if stripe_sub:
+                has_active = stripe_sub.status == 'active'
+                return cors_response(
+                    json.dumps({
+                        "has_active_subscription": has_active,
+                        "status": stripe_sub.status,
+                        "expires_date": stripe_sub.current_period_end.isoformat(),
+                        "product_id": "stripe_monthly",
+                        "platform": "stripe",
+                        "auto_renew_status": stripe_sub.status == 'active'
+                    }),
+                    200,
+                    "application/json"
+                )
+
+            apple_status = app_store_service.get_user_subscription_status(str(user.id))
+            return cors_response(
+                json.dumps(apple_status),
+                200,
+                "application/json"
+            )
 
     except Exception as e:
         logger.exception("Failed to get subscription status")
@@ -200,62 +220,69 @@ def refresh_subscription(req: func.HttpRequest) -> func.HttpResponse:
 @bp.route(route="subscriptions/products", methods=["GET", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def get_subscription_products(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Get available subscription products with metadata.
-
-    Returns list of available subscription products with features,
-    descriptions, and metadata. Supplements pricing/availability
-    from the mobile app's IAP implementation.
-
-    Args:
-        req: HTTP request
-
-    Returns:
-        HTTP response with list of subscription products
-
-    Raises:
-        500: Server error
-    """
     if req.method == "OPTIONS":
         return cors_response(204)
 
     try:
-        # Single monthly subscription product
-        # This is the only subscription available for purchase
-        products = [
-            {
-                "product_id": "com.axly.premium.monthly",
-                "name": "AXLY Pro Monthly",
-                "description": "Unlock all premium features with AI-powered diagnostics",
-                "features": [
-                    "Unlimited vehicle profiles",
-                    "AI-powered diagnostic analysis",
-                    "Conversational AI assistant",
-                    "Live OBD2 data monitoring",
-                    "Complete trouble code database",
-                    "Service reminders & tracking",
-                    "Priority customer support"
-                ],
-                "billing_period": "monthly",
-                "billing_period_unit": "month",
-                "popular": True,
-                "recommended": True,
-                "savings_text": None,
-                "trial_available": False,
-                "sort_order": 1
-            }
-        ]
+        from models import SubscriptionProduct
+        from services.stripe_service import stripe_service
 
-        return cors_response(
-            json.dumps({
-                "success": True,
-                "products": products,
-                "total_count": len(products),
-                "updated_at": "2025-01-01T00:00:00Z"  # Could be dynamic
-            }),
-            200,
-            "application/json"
-        )
+        with SessionLocal() as db:
+            db_products = db.query(SubscriptionProduct).filter(
+                SubscriptionProduct.active == True
+            ).order_by(SubscriptionProduct.sort_order).all()
+
+            products = []
+            for db_product in db_products:
+                try:
+                    stripe_price = stripe_service.get_price(db_product.stripe_price_id)
+
+                    amount = stripe_price['amount'] / 100
+                    currency = stripe_price['currency'].upper()
+                    currency_symbols = {'USD': '$', 'EUR': '€', 'GBP': '£'}
+                    symbol = currency_symbols.get(currency, currency + ' ')
+
+                    price_formatted = f"{symbol}{amount:.2f}"
+
+                    product_data = {
+                        "product_id": db_product.product_id,
+                        "stripe_price_id": db_product.stripe_price_id,
+                        "name": db_product.name,
+                        "description": db_product.description,
+                        "price": price_formatted,
+                        "price_amount": amount,
+                        "currency": currency,
+                        "features": [
+                            "Unlimited vehicle profiles",
+                            "AI-powered diagnostic analysis",
+                            "Conversational AI assistant",
+                            "Live OBD2 data monitoring",
+                            "Complete trouble code database",
+                            "Service reminders & tracking",
+                            "Priority customer support"
+                        ],
+                        "billing_period": db_product.billing_period,
+                        "billing_period_unit": db_product.billing_period_unit,
+                        "popular": db_product.popular,
+                        "recommended": db_product.recommended,
+                        "savings_text": db_product.savings_text,
+                        "trial_available": db_product.trial_available,
+                        "sort_order": db_product.sort_order
+                    }
+                    products.append(product_data)
+                except Exception as e:
+                    logger.error(f"Failed to fetch Stripe price for {db_product.product_id}: {e}")
+                    continue
+
+            return cors_response(
+                json.dumps({
+                    "success": True,
+                    "products": products,
+                    "total_count": len(products)
+                }),
+                200,
+                "application/json"
+            )
 
     except Exception as e:
         logger.exception("Failed to get subscription products")

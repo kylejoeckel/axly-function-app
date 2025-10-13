@@ -20,3 +20,5 @@ from .subscription import (
     SubscriptionPlatform,
     SubscriptionStatus,
 )
+from .stripe_subscription import StripeSubscription
+from .subscription_product import SubscriptionProduct
