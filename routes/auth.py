@@ -611,6 +611,15 @@ def delete_account(req: func.HttpRequest) -> func.HttpResponse:
             if not user_to_delete:
                 return cors_response("User not found", 404)
 
+            # Delete related records first to avoid foreign key constraints
+            # Delete user subscriptions
+            from models import StripeSubscription
+            db.query(StripeSubscription).filter(StripeSubscription.user_id == user_id).delete()
+
+            # The User model should have cascade deletes configured for:
+            # - vehicles, conversations, messages, etc.
+            # If not, you may need to explicitly delete them here
+
             db.delete(user_to_delete)
             db.commit()
 
