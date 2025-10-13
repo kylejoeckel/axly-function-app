@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = 'add_stripe_001'
-down_revision = None
+down_revision = '0b644f58a79c'
 depends_on = None
 
 
