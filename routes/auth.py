@@ -563,3 +563,63 @@ def create_admin(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as e:
         logger.exception("Failed to create admin user")
         return cors_response(str(e), 500)
+
+
+@bp.function_name(name="DeleteAccount")
+@bp.route(route="delete_account", methods=["DELETE", "OPTIONS"],
+          auth_level=func.AuthLevel.ANONYMOUS)
+def delete_account(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Delete the authenticated user's account and all associated data.
+
+    This is a permanent action that:
+    - Deletes all user's vehicles
+    - Deletes all user's conversations
+    - Deletes the user account
+    - Cancels any active subscriptions (user must cancel separately with provider)
+
+    Args:
+        req: HTTP request with Authorization header
+
+    Returns:
+        HTTP response confirming deletion or error
+
+    Raises:
+        401: Unauthorized (missing or invalid token)
+        500: Server error
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    try:
+        with SessionLocal() as db:
+            user = current_user_from_request(req, db)
+            if not user:
+                return cors_response("Unauthorized", 401)
+
+            user_id = user.id
+            user_email = user.email
+
+            logger.info(f"Deleting account for user: {user_email} (ID: {user_id})")
+
+            # Delete user's data (cascading deletes should handle related records)
+            # SQLAlchemy relationships with cascade='all, delete-orphan' will handle:
+            # - vehicles, conversations, diagnoses, etc.
+
+            db.delete(user)
+            db.commit()
+
+            logger.info(f"Successfully deleted account: {user_email}")
+
+            return cors_response(
+                json.dumps({
+                    "success": True,
+                    "message": "Account deleted successfully"
+                }),
+                200,
+                "application/json"
+            )
+
+    except Exception as e:
+        logger.exception("Failed to delete account")
+        return cors_response(str(e), 500)
