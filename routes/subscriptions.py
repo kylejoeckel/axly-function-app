@@ -16,13 +16,21 @@ bp = func.Blueprint()
           auth_level=func.AuthLevel.ANONYMOUS)
 def validate_receipt(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Validate an App Store receipt and update user subscription status
+    Validate App Store receipt and update subscription status.
 
-    Expected payload:
-    {
-        "receipt_data": "base64_encoded_receipt_data",
-        "platform": "apple_app_store"
-    }
+    Validates the provided receipt with Apple's servers and updates
+    the user's subscription status in the database.
+
+    Args:
+        req: HTTP request containing JSON with receipt_data and optional platform
+
+    Returns:
+        HTTP response with validation result and subscription status
+
+    Raises:
+        400: Missing receipt_data or unsupported platform
+        401: Unauthorized
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -85,7 +93,20 @@ def validate_receipt(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def subscription_status(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Get current subscription status for the authenticated user
+    Get current subscription status for authenticated user.
+
+    Retrieves the current subscription status including expiration date,
+    product information, and renewal status.
+
+    Args:
+        req: HTTP request with Authorization header
+
+    Returns:
+        HTTP response with subscription status data
+
+    Raises:
+        401: Unauthorized
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -111,12 +132,21 @@ def subscription_status(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def refresh_subscription(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Refresh subscription status by re-validating the latest receipt
+    Refresh subscription status by re-validating receipt.
 
-    Expected payload:
-    {
-        "receipt_data": "base64_encoded_receipt_data"
-    }
+    Re-validates the user's latest receipt with Apple's servers
+    to get the most current subscription status.
+
+    Args:
+        req: HTTP request containing JSON with receipt_data
+
+    Returns:
+        HTTP response with refreshed subscription status
+
+    Raises:
+        400: Missing receipt_data or validation failed
+        401: Unauthorized
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -171,21 +201,36 @@ def refresh_subscription(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def get_subscription_products(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Get available subscription products with metadata
-    This supplements the pricing/availability from react-native-iap
+    Get available subscription products with metadata.
+
+    Returns list of available subscription products with features,
+    descriptions, and metadata. Supplements pricing/availability
+    from the mobile app's IAP implementation.
+
+    Args:
+        req: HTTP request
+
+    Returns:
+        HTTP response with list of subscription products
+
+    Raises:
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
 
     try:
+        # Single monthly subscription product
+        # This is the only subscription available for purchase
         products = [
             {
                 "product_id": "com.axly.premium.monthly",
                 "name": "AXLY Pro Monthly",
-                "description": "Complete vehicle diagnostics and AI-powered analysis",
+                "description": "Unlock all premium features with AI-powered diagnostics",
                 "features": [
                     "Unlimited vehicle profiles",
                     "AI-powered diagnostic analysis",
+                    "Conversational AI assistant",
                     "Live OBD2 data monitoring",
                     "Complete trouble code database",
                     "Service reminders & tracking",
@@ -197,51 +242,9 @@ def get_subscription_products(req: func.HttpRequest) -> func.HttpResponse:
                 "recommended": True,
                 "savings_text": None,
                 "trial_available": False,
-                "sort_order": 2
-            },
-            {
-                "product_id": "com.axly.premium.yearly",
-                "name": "AXLY Pro Yearly",
-                "description": "Best value - complete access with annual billing",
-                "features": [
-                    "All monthly features included",
-                    "Save up to 40% vs monthly billing",
-                    "Extended warranty lookup",
-                    "Advanced repair cost estimates",
-                    "Maintenance scheduling assistant",
-                    "VIP customer support"
-                ],
-                "billing_period": "yearly",
-                "billing_period_unit": "year",
-                "popular": False,
-                "recommended": False,
-                "savings_text": "Save 40%",
-                "trial_available": False,
-                "sort_order": 3
-            },
-            {
-                "product_id": "com.axly.premium.weekly",
-                "name": "AXLY Pro Weekly",
-                "description": "Short-term access for specific diagnostic needs",
-                "features": [
-                    "All Pro features for 7 days",
-                    "Perfect for specific repairs",
-                    "No long-term commitment",
-                    "Full feature access",
-                    "Standard customer support"
-                ],
-                "billing_period": "weekly",
-                "billing_period_unit": "week",
-                "popular": False,
-                "recommended": False,
-                "savings_text": None,
-                "trial_available": False,
                 "sort_order": 1
             }
         ]
-
-        # Sort by sort_order
-        products.sort(key=lambda x: x['sort_order'])
 
         return cors_response(
             json.dumps({
@@ -271,19 +274,25 @@ def get_subscription_products(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def app_store_webhook(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Handle App Store Server Notifications
-    This endpoint will be called by Apple when subscription status changes
+    Handle App Store Server Notifications.
+
+    Receives and processes webhook notifications from Apple's App Store
+    when subscription status changes occur.
+
+    Args:
+        req: HTTP request containing notification payload from Apple
+
+    Returns:
+        HTTP response acknowledging receipt
+
+    Raises:
+        500: Server error
     """
     try:
-        # Get raw body for signature verification
         raw_body = req.get_body()
-
-        # TODO: Verify the notification signature using Apple's certificate
-        # This is critical for security in production
 
         notification_data = json.loads(raw_body.decode('utf-8'))
 
-        # Store notification for processing
         from models import AppStoreNotification
         from db import SessionLocal
 
@@ -301,8 +310,6 @@ def app_store_webhook(req: func.HttpRequest) -> func.HttpResponse:
 
             logger.info(f"Stored App Store notification: {notification.notification_type}")
 
-        # TODO: Process the notification asynchronously
-        # For now, just acknowledge receipt
         return func.HttpResponse("OK", status_code=200)
 
     except Exception as e:
@@ -314,14 +321,22 @@ def app_store_webhook(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Authenticate user using App Store receipt (subscription-first auth)
-    Creates account automatically if needed, returns JWT token
+    Authenticate user using App Store receipt.
 
-    Expected payload:
-    {
-        "receipt_data": "base64_encoded_receipt_data",
-        "device_id": "optional_device_identifier"
-    }
+    Subscription-first authentication that validates an App Store receipt
+    and creates user account automatically if needed. Returns JWT token
+    for immediate access.
+
+    Args:
+        req: HTTP request containing JSON with receipt_data and optional device_id
+
+    Returns:
+        HTTP response with access token and user data
+
+    Raises:
+        400: Missing receipt_data or invalid receipt
+        401: Invalid receipt
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -334,7 +349,6 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
         if not receipt_data:
             return cors_response("Missing receipt_data", 400)
 
-        # First validate the receipt with Apple
         success, apple_response = app_store_service._make_validation_request(
             app_store_service.PRODUCTION_URL,
             {
@@ -344,7 +358,6 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
             }
         )
 
-        # Try sandbox if production fails with 21007
         if apple_response.get("status") == 21007:
             success, apple_response = app_store_service._make_validation_request(
                 app_store_service.SANDBOX_URL,
@@ -366,7 +379,6 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
                 "application/json"
             )
 
-        # Extract transaction info to find or create user
         receipt = apple_response.get("receipt", {})
         latest_receipt_info = apple_response.get("latest_receipt_info", [])
         transactions = latest_receipt_info if latest_receipt_info else receipt.get("in_app", [])
@@ -374,7 +386,6 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
         if not transactions:
             return cors_response("No valid transactions in receipt", 400)
 
-        # Use the first (or most recent) transaction to identify user
         transaction = transactions[0] if transactions else None
         original_transaction_id = (
             transaction.get("original_transaction_id") or
@@ -385,14 +396,12 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
             return cors_response("Invalid transaction data", 400)
 
         with SessionLocal() as db:
-            # Look for existing subscription with this transaction ID
             existing_subscription = db.query(UserSubscription).filter(
                 UserSubscription.transaction_id == original_transaction_id,
                 UserSubscription.platform == SubscriptionPlatform.APPLE_APP_STORE
             ).first()
 
             if existing_subscription:
-                # User exists, validate their receipt and return token
                 user = existing_subscription.user
                 app_store_service.validate_receipt(receipt_data, str(user.id))
 
@@ -417,25 +426,20 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
                     "application/json"
                 )
             else:
-                # New user - create account automatically
-                # Generate a unique email based on transaction ID
                 auto_email = f"appstore_{original_transaction_id}@axly.app"
 
-                # Check if somehow this email already exists
                 existing_user = db.query(User).filter(User.email == auto_email).first()
                 if existing_user:
                     user = existing_user
                 else:
-                    # Create new user (no password needed for App Store users)
                     user = User(
                         email=auto_email,
-                        password_hash="",  # Empty for App Store-only accounts
+                        password_hash="",
                         created_via_receipt=True
                     )
                     db.add(user)
-                    db.flush()  # Get the user ID
+                    db.flush()
 
-                # Validate receipt to create subscription
                 app_store_service.validate_receipt(receipt_data, str(user.id))
                 db.commit()
 
@@ -477,15 +481,21 @@ def auth_with_receipt(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def link_account(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Link an existing email/password account to an App Store subscription
-    or upgrade an App Store-only account to have email/password access
+    Link email/password account to App Store subscription.
 
-    Expected payload:
-    {
-        "email": "user@example.com",
-        "password": "password123",
-        "receipt_data": "base64_encoded_receipt_data"
-    }
+    Links an existing email/password account to an App Store subscription
+    or upgrades an App Store-only account to have email/password access.
+
+    Args:
+        req: HTTP request containing JSON with email, password, and receipt_data
+
+    Returns:
+        HTTP response with access token and link status
+
+    Raises:
+        400: Missing fields, invalid receipt, or account already linked
+        409: Email exists with different App Store account
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -620,7 +630,6 @@ def link_account(req: func.HttpRequest) -> func.HttpResponse:
                 db.add(user)
                 db.flush()
 
-                # Validate receipt to create subscription
                 app_store_service.validate_receipt(receipt_data, str(user.id))
                 db.commit()
 

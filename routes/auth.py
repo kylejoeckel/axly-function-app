@@ -13,13 +13,27 @@ from models import User, EmailVerification, UserRole
 logger = logging.getLogger(__name__)
 bp = func.Blueprint()
 
-# ────────────────────────────────────────────────────────────
-#  /request_pin
-# ────────────────────────────────────────────────────────────
 @bp.function_name(name="RequestPin")
 @bp.route(route="request_pin", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def request_pin(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Request a verification PIN for user registration.
+
+    Checks if email is already registered and sends a verification PIN
+    if the email is available for new account creation.
+
+    Args:
+        req: HTTP request containing JSON with email field
+
+    Returns:
+        HTTP response with success message or error
+
+    Raises:
+        400: Missing email
+        409: Email already exists
+        500: Server error
+    """
     if req.method == "OPTIONS":
         return cors_response(204)
 
@@ -29,13 +43,11 @@ def request_pin(req: func.HttpRequest) -> func.HttpResponse:
         if not email:
             return cors_response("Missing email", 400)
 
-        # ──── NEW: abort if the e-mail is already registered ────
         with SessionLocal() as db:
             if db.query(User).filter(User.email == email).first():
-                # 409 Conflict is conventional for “unique key already exists”
                 return cors_response("User already exists", 409)
 
-        create_verification_pin(email)        # <- unchanged helper
+        create_verification_pin(email)
         return cors_response("Verification PIN sent", 200)
 
     except Exception as e:
@@ -44,13 +56,26 @@ def request_pin(req: func.HttpRequest) -> func.HttpResponse:
 
 
 
-# ────────────────────────────────────────────────────────────
-#  /confirm_signup
-# ────────────────────────────────────────────────────────────
 @bp.function_name(name="ConfirmSignup")
 @bp.route(route="confirm_signup", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def confirm_signup(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Confirm user signup with verification PIN.
+
+    Validates the PIN and creates a new user account with the provided
+    email and password.
+
+    Args:
+        req: HTTP request containing JSON with email, password, and pin
+
+    Returns:
+        HTTP response with user data on success or error message
+
+    Raises:
+        400: Missing fields, invalid/expired PIN, or user already exists
+        500: Server error
+    """
     if req.method == "OPTIONS":
         return cors_response(204)
     try:
@@ -96,13 +121,27 @@ def confirm_signup(req: func.HttpRequest) -> func.HttpResponse:
         return cors_response(str(e), 500)
 
 
-# ────────────────────────────────────────────────────────────
-#  /login
-# ────────────────────────────────────────────────────────────
 @bp.function_name(name="Login")
 @bp.route(route="login", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def login(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Authenticate user with email and password.
+
+    Validates user credentials and returns access token along with user
+    information and subscription status.
+
+    Args:
+        req: HTTP request containing JSON with email and password
+
+    Returns:
+        HTTP response with access token, user data, and subscription info
+
+    Raises:
+        400: Missing email or password
+        401: Invalid credentials
+        500: Server error
+    """
     if req.method == "OPTIONS":
         return cors_response(204)
 
@@ -120,8 +159,6 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
             return cors_response("Invalid credentials", 401)
 
         token = create_access_token({"sub": str(user.id)})
-
-        # Get user subscription status
         subscription_status = app_store_service.get_user_subscription_status(str(user.id))
 
         return cors_response(
@@ -153,29 +190,45 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
         return cors_response(str(e), 500)
 
 
-# ────────────────────────────────────────────────────────────
-#  /logout
-# ────────────────────────────────────────────────────────────
 @bp.function_name(name="Logout")
 @bp.route(route="logout", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def logout(req: func.HttpRequest) -> func.HttpResponse:
-    # Token black‑listing would need a store; here we just answer 200.
+    """
+    Log out the current user.
+
+    Simple logout endpoint that returns success. Token blacklisting
+    would require additional storage implementation.
+
+    Args:
+        req: HTTP request
+
+    Returns:
+        HTTP response with logout confirmation
+    """
     if req.method == "OPTIONS":
         return cors_response(204)
     return cors_response("Logged out", 200)
-
-# ────────────────────────────────────────────────────────────
-#  CHANGE PASSWORD (logged-in flow)
-# ────────────────────────────────────────────────────────────
 
 @bp.function_name(name="RequestChangePasswordPin")
 @bp.route(route="request_change_password_pin", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def request_change_password_pin(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Sends a PIN to the current user's email to confirm a password change.
-    Requires Authorization header; doesn't reveal any other info.
+    Request a PIN for password change confirmation.
+
+    Sends a verification PIN to the authenticated user's email address
+    to confirm password change request.
+
+    Args:
+        req: HTTP request with Authorization header
+
+    Returns:
+        HTTP response with confirmation message
+
+    Raises:
+        401: Unauthorized - missing or invalid token
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -185,11 +238,9 @@ def request_change_password_pin(req: func.HttpRequest) -> func.HttpResponse:
         if not user:
             return cors_response("Unauthorized", 401)
 
-        # Send a PIN labeled for the 'change_password' purpose
         try:
             create_verification_pin(user.email, purpose="change_password")
         except TypeError:
-            # Backward compat if your helper doesn't accept 'purpose' yet
             create_verification_pin(user.email)
 
         return cors_response("Verification PIN sent", 200)
@@ -203,7 +254,21 @@ def request_change_password_pin(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def confirm_change_password(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Confirms the PIN and updates the password for the logged-in user.
+    Confirm password change with PIN verification.
+
+    Validates the PIN and updates the password for the authenticated user.
+
+    Args:
+        req: HTTP request with Authorization header and JSON containing pin and new_password
+
+    Returns:
+        HTTP response with success confirmation
+
+    Raises:
+        400: Missing pin or new_password
+        401: Unauthorized
+        404: User not found
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -220,7 +285,6 @@ def confirm_change_password(req: func.HttpRequest) -> func.HttpResponse:
             return cors_response("Missing pin or new_password", 400)
 
         with SessionLocal() as db:
-            # Look up a valid, unexpired PIN for this user (optionally by purpose)
             qry = db.query(EmailVerification).filter(
                 EmailVerification.email == user.email,
                 EmailVerification.pin == pin,
@@ -233,13 +297,12 @@ def confirm_change_password(req: func.HttpRequest) -> func.HttpResponse:
             if not record:
                 return cors_response("Invalid or expired PIN", 400)
 
-            # Update password
             db_user = db.query(User).filter(User.id == user.id).first()
             if not db_user:
                 return cors_response("User not found", 404)
 
             db_user.password_hash = hash_password(new_password)
-            db.delete(record)  # one-time use
+            db.delete(record)
             db.commit()
 
         return cors_response("Password updated", 200)
@@ -248,17 +311,25 @@ def confirm_change_password(req: func.HttpRequest) -> func.HttpResponse:
         logger.exception("Failed to confirm change-password")
         return cors_response(str(e), 500)
     
-# ────────────────────────────────────────────────────────────
-#  FORGOT PASSWORD (not logged-in flow)
-# ────────────────────────────────────────────────────────────
-
 @bp.function_name(name="RequestPasswordResetPin")
 @bp.route(route="request_password_reset_pin", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def request_password_reset_pin(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Sends a PIN for password reset. To avoid account enumeration,
-    we always return 200 even if the email is unknown.
+    Request a PIN for password reset.
+
+    Sends a verification PIN for password reset. Always returns success
+    to prevent account enumeration attacks.
+
+    Args:
+        req: HTTP request containing JSON with email field
+
+    Returns:
+        HTTP response with generic success message
+
+    Raises:
+        400: Missing email
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -277,8 +348,6 @@ def request_password_reset_pin(req: func.HttpRequest) -> func.HttpResponse:
                 create_verification_pin(email, purpose="password_reset")
             except TypeError:
                 create_verification_pin(email)
-
-        # Always 200 to prevent email enumeration
         return cors_response("If an account exists for that email, a PIN has been sent.", 200)
 
     except Exception as e:
@@ -291,8 +360,21 @@ def request_password_reset_pin(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def confirm_password_reset(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Confirms the reset PIN and sets a new password for the given email.
-    Returns a fresh access token so the user is signed in afterward.
+    Confirm password reset with PIN verification.
+
+    Validates the reset PIN and sets a new password for the user.
+    Returns a fresh access token for immediate login.
+
+    Args:
+        req: HTTP request containing JSON with email, pin, and new_password
+
+    Returns:
+        HTTP response with access token and user data
+
+    Raises:
+        400: Missing fields or invalid/expired PIN
+        404: User not found
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -307,7 +389,6 @@ def confirm_password_reset(req: func.HttpRequest) -> func.HttpResponse:
             return cors_response("Missing fields", 400)
 
         with SessionLocal() as db:
-            # Validate PIN
             qry = db.query(EmailVerification).filter(
                 EmailVerification.email == email,
                 EmailVerification.pin == pin,
@@ -322,8 +403,6 @@ def confirm_password_reset(req: func.HttpRequest) -> func.HttpResponse:
 
             user = db.query(User).filter(User.email == email).first()
             if not user:
-                # Very unlikely if we sent a PIN only for existing users,
-                # but still protect logic.
                 return cors_response("User not found", 404)
 
             user.password_hash = hash_password(new_password)
@@ -352,16 +431,27 @@ def confirm_password_reset(req: func.HttpRequest) -> func.HttpResponse:
         logger.exception("Failed to confirm password reset")
         return cors_response(str(e), 500)
 
-# ────────────────────────────────────────────────────────────
-#  ADMIN ENDPOINTS
-# ────────────────────────────────────────────────────────────
-
 @bp.function_name(name="AdminLogin")
 @bp.route(route="admin/login", methods=["POST", "OPTIONS"],
           auth_level=func.AuthLevel.ANONYMOUS)
 def admin_login(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Admin login endpoint - only allows admin users to authenticate
+    Authenticate admin users.
+
+    Validates admin user credentials and returns access token.
+    Only users with admin role can authenticate through this endpoint.
+
+    Args:
+        req: HTTP request containing JSON with email and password
+
+    Returns:
+        HTTP response with access token and admin user data
+
+    Raises:
+        400: Missing email or password
+        401: Invalid credentials
+        403: User is not admin
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
@@ -379,7 +469,6 @@ def admin_login(req: func.HttpRequest) -> func.HttpResponse:
         if not user or not verify_password(password, user.password_hash):
             return cors_response("Invalid credentials", 401)
 
-        # Check if user is admin
         if not user.is_admin:
             return cors_response("Access denied", 403)
 
@@ -408,19 +497,32 @@ def admin_login(req: func.HttpRequest) -> func.HttpResponse:
           auth_level=func.AuthLevel.ANONYMOUS)
 def create_admin(req: func.HttpRequest) -> func.HttpResponse:
     """
-    Create admin user endpoint - for initial setup or by existing admins
+    Create a new admin user.
+
+    Creates a new admin user account. If no admins exist, anyone can create
+    the first admin. Otherwise, requires existing admin authentication.
+
+    Args:
+        req: HTTP request containing JSON with email and password
+
+    Returns:
+        HTTP response with new admin user data
+
+    Raises:
+        400: Missing email or password
+        403: Admin access required (when admins exist)
+        409: Email already exists
+        500: Server error
     """
     if req.method == "OPTIONS":
         return cors_response(204)
 
     try:
-        # Check if requester is admin (if any admins exist)
         requester = current_user_from_request(req)
 
         with SessionLocal() as db:
             admin_exists = db.query(User).filter(User.role == UserRole.ADMIN).first()
 
-            # If admins exist, require admin auth
             if admin_exists and (not requester or not requester.is_admin):
                 return cors_response("Admin access required", 403)
 
@@ -432,12 +534,10 @@ def create_admin(req: func.HttpRequest) -> func.HttpResponse:
             return cors_response("Missing email or password", 400)
 
         with SessionLocal() as db:
-            # Check if email already exists
             existing = db.query(User).filter(User.email == email).first()
             if existing:
                 return cors_response("Email already exists", 409)
 
-            # Create admin user
             admin_user = User(
                 email=email,
                 password_hash=hash_password(password),
