@@ -592,33 +592,38 @@ def delete_account(req: func.HttpRequest) -> func.HttpResponse:
         return cors_response(204)
 
     try:
+        user = current_user_from_request(req)
+        if not user:
+            return cors_response("Unauthorized", 401)
+
+        user_id = user.id
+        user_email = user.email
+
+        logger.info(f"Deleting account for user: {user_email} (ID: {user_id})")
+
+        # Delete user's data (cascading deletes should handle related records)
+        # SQLAlchemy relationships with cascade='all, delete-orphan' will handle:
+        # - vehicles, conversations, diagnoses, etc.
+
         with SessionLocal() as db:
-            user = current_user_from_request(req, db)
-            if not user:
-                return cors_response("Unauthorized", 401)
+            # Re-query the user in this session context
+            user_to_delete = db.query(User).filter(User.id == user_id).first()
+            if not user_to_delete:
+                return cors_response("User not found", 404)
 
-            user_id = user.id
-            user_email = user.email
-
-            logger.info(f"Deleting account for user: {user_email} (ID: {user_id})")
-
-            # Delete user's data (cascading deletes should handle related records)
-            # SQLAlchemy relationships with cascade='all, delete-orphan' will handle:
-            # - vehicles, conversations, diagnoses, etc.
-
-            db.delete(user)
+            db.delete(user_to_delete)
             db.commit()
 
-            logger.info(f"Successfully deleted account: {user_email}")
+        logger.info(f"Successfully deleted account: {user_email}")
 
-            return cors_response(
-                json.dumps({
-                    "success": True,
-                    "message": "Account deleted successfully"
-                }),
-                200,
-                "application/json"
-            )
+        return cors_response(
+            json.dumps({
+                "success": True,
+                "message": "Account deleted successfully"
+            }),
+            200,
+            "application/json"
+        )
 
     except Exception as e:
         logger.exception("Failed to delete account")
