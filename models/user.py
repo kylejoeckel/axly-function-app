@@ -67,19 +67,13 @@ class User(Base):
 
     @property
     def can_add_vehicles(self) -> bool:
-        """Check if user can add more vehicles"""
-        if self.is_admin:
-            return True
-        if self.is_free_tier:
-            return len(self.vehicles) < 1  # Free tier limited to 1 vehicle
-        return True  # Premium tier unlimited
+        """Check if user can add more vehicles - unlimited for all users"""
+        return True
 
     @property
     def can_download_spec_sheets(self) -> bool:
-        """Check if user can download vehicle spec sheets"""
-        if self.is_admin:
-            return True
-        return self.is_premium_tier  # Only premium tier can download
+        """Check if user can download vehicle spec sheets - available for all users"""
+        return True
 
     @property
     def can_use_diagnose(self) -> bool:
