@@ -5,7 +5,7 @@ from utils.cors import cors_response
 from services.email_verification_service import create_verification_pin
 from services.app_store_service import app_store_service
 from auth.utils import hash_password, verify_password
-from auth.token import create_access_token
+from auth.token import create_access_token, create_token_pair, decode_refresh_token
 from auth.deps import current_user_from_request
 from db import SessionLocal
 from models import User, EmailVerification, UserRole
@@ -158,13 +158,14 @@ def login(req: func.HttpRequest) -> func.HttpResponse:
         if not user or not verify_password(password, user.password_hash):
             return cors_response("Invalid credentials", 401)
 
-        token = create_access_token({"sub": str(user.id)})
+        access_token, refresh_token = create_token_pair(str(user.id))
         subscription_status = app_store_service.get_user_subscription_status(str(user.id))
 
         return cors_response(
             json.dumps({
                 "success": True,
-                "access_token": token,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
                 "token_type": "bearer",
                 "user": {
                     "id": str(user.id),
@@ -209,6 +210,68 @@ def logout(req: func.HttpRequest) -> func.HttpResponse:
     if req.method == "OPTIONS":
         return cors_response(204)
     return cors_response("Logged out", 200)
+
+
+@bp.function_name(name="RefreshToken")
+@bp.route(route="auth/refresh", methods=["POST", "OPTIONS"],
+          auth_level=func.AuthLevel.ANONYMOUS)
+def refresh_token(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Refresh an access token using a refresh token.
+
+    Args:
+        req: HTTP request containing JSON with refresh_token
+
+    Returns:
+        HTTP response with new access_token and refresh_token
+
+    Raises:
+        400: Missing refresh_token
+        401: Invalid or expired refresh token
+        404: User not found
+        500: Server error
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    try:
+        data = req.get_json()
+        refresh_token_str = data.get("refresh_token", "").strip()
+
+        if not refresh_token_str:
+            return cors_response("Missing refresh_token", 400)
+
+        payload = decode_refresh_token(refresh_token_str)
+        if not payload:
+            return cors_response("Invalid or expired refresh token", 401)
+
+        user_id = payload.get("sub")
+        if not user_id:
+            return cors_response("Invalid token payload", 401)
+
+        with SessionLocal() as db:
+            user = db.query(User).filter(User.id == user_id).first()
+
+        if not user:
+            return cors_response("User not found", 404)
+
+        access_token, new_refresh_token = create_token_pair(str(user.id))
+
+        return cors_response(
+            json.dumps({
+                "success": True,
+                "access_token": access_token,
+                "refresh_token": new_refresh_token,
+                "token_type": "bearer"
+            }),
+            200,
+            "application/json",
+        )
+
+    except Exception as e:
+        logger.exception("Token refresh failed")
+        return cors_response(str(e), 500)
+
 
 @bp.function_name(name="RequestChangePasswordPin")
 @bp.route(route="request_change_password_pin", methods=["POST", "OPTIONS"],
