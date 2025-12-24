@@ -123,7 +123,7 @@ def _build_html_email(pin: str, message_line: str, ttl_minutes: int) -> str:
                     <tr>
                         <td style="padding: 20px 40px; background-color: #171717; border-top: 1px solid #2A2A2A;">
                             <p style="margin: 0; color: #505050; font-size: 12px; text-align: center;">
-                                &copy; {datetime.utcnow().year} AXLY.pro — Your AI-Powered Car Companion
+                                &copy; {datetime.utcnow().year} AXLY.pro
                             </p>
                         </td>
                     </tr>
