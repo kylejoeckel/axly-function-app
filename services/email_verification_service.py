@@ -81,8 +81,8 @@ def _build_html_email(pin: str, message_line: str, ttl_minutes: int) -> str:
             <td align="center" style="padding: 40px 20px;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width: 480px; background-color: #1E1E1E; border-radius: 16px; overflow: hidden;">
                     <tr>
-                        <td align="center" style="padding: 40px 40px 30px 40px; background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);">
-                            <img src="{LOGO_URL}" alt="AXLY.pro" width="120" style="display: block; max-width: 120px; height: auto;">
+                        <td align="center" style="padding: 24px 40px 16px 40px; background: linear-gradient(135deg, #1E1E1E 0%, #2A2A2A 100%);">
+                            <img src="{LOGO_URL}" alt="AXLY.pro" width="140" style="display: block; max-width: 140px; height: auto;">
                         </td>
                     </tr>
                     <tr>
