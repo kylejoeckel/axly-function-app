@@ -30,6 +30,7 @@ class User(Base):
     conversations = relationship("Conversation", back_populates="user")
     subscriptions = relationship("UserSubscription", back_populates="user")
     stripe_subscription = relationship("StripeSubscription", back_populates="user", uselist=False)
+    track_results = relationship("TrackResult", back_populates="user", cascade="all, delete-orphan")
 
     @property
     def is_app_store_only(self) -> bool:

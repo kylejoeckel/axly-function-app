@@ -29,6 +29,7 @@ _try("routes.diagnose", "diagnose")
 _try("routes.subscriptions", "subscriptions")
 _try("routes.stripe_routes", "stripe")
 _try("routes.admin_routes", "admin")
+_try("routes.track", "track")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])

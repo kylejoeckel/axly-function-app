@@ -23,4 +23,5 @@ class Vehicle(Base):
     # models/vehicle.py (inside Vehicle class)
     services = relationship("VehicleService", back_populates="vehicle", cascade="all, delete-orphan")
     service_reminders = relationship("ServiceReminder", back_populates="vehicle", cascade="all, delete-orphan")
+    track_results = relationship("TrackResult", back_populates="vehicle", cascade="all, delete-orphan")
 
