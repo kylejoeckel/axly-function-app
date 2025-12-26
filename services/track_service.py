@@ -16,7 +16,7 @@ VALID_TREE_TYPES = {"pro", "sportsman"}
 
 def list_track_results(user_id: uuid.UUID, vehicle_id: Optional[uuid.UUID] = None) -> List[TrackResult]:
     with SessionLocal() as db:
-        query = db.query(TrackResult).filter(TrackResult.user_id == user_id)
+        query = db.query(TrackResult).options(joinedload(TrackResult.vehicle)).filter(TrackResult.user_id == user_id)
         if vehicle_id:
             query = query.filter(TrackResult.vehicle_id == vehicle_id)
         return query.order_by(TrackResult.created_at.desc()).all()

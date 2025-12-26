@@ -67,12 +67,16 @@ def track_results(req: func.HttpRequest) -> func.HttpResponse:
             except Exception:
                 return cors_response("Invalid vehicle_id", 400)
 
-        results = list_track_results(user.id, vid)
-        return cors_response(
-            json.dumps([_serialize_result(r, include_vehicle=True) for r in results]),
-            200,
-            "application/json",
-        )
+        try:
+            results = list_track_results(user.id, vid)
+            return cors_response(
+                json.dumps([_serialize_result(r, include_vehicle=True) for r in results]),
+                200,
+                "application/json",
+            )
+        except Exception as e:
+            logger.error(f"Error listing track results: {e}")
+            return cors_response(f"Error listing track results: {str(e)}", 500)
 
     # POST - Create new result
     try:

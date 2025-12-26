@@ -13,4 +13,4 @@ engine = create_engine(
     max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "2")),
     pool_recycle=1800,
 )
-SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
