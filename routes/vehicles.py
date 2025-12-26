@@ -18,6 +18,7 @@ from services.vehicle_service import (
     list_services, add_service, update_service, delete_service,
     list_service_documents, delete_service_document,
     list_service_reminders, add_service_reminder, update_service_reminder, delete_service_reminder,
+    DuplicateVINError,
 )
 
 # For multipart document uploads (parallel to vehicle_image_service)
@@ -76,8 +77,11 @@ def vehicles(req: func.HttpRequest) -> func.HttpResponse:
     if not all([make, model, year]):
         return cors_response("Missing make/model/year", 400)
 
-    v = create_vehicle(user.id, make, model, year, submodel=submodel, vin=vin)
-    return cors_response(json.dumps({"id": str(v.id)}), 201, "application/json")
+    try:
+        v = create_vehicle(user.id, make, model, year, submodel=submodel, vin=vin)
+        return cors_response(json.dumps({"id": str(v.id)}), 201, "application/json")
+    except DuplicateVINError as e:
+        return cors_response(str(e), 409)
 
 @bp.function_name(name="VehicleItem")
 @bp.route(route="vehicles/{vehicle_id}", methods=["GET", "PUT", "DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
@@ -123,8 +127,11 @@ def vehicle_item(req: func.HttpRequest) -> func.HttpResponse:
 
     if req.method == "PUT":
         patch = req.get_json() or {}
-        ok = update_vehicle(user.id, vid, patch)
-        return cors_response("Updated" if ok else "Not found", 200 if ok else 404)
+        try:
+            ok = update_vehicle(user.id, vid, patch)
+            return cors_response("Updated" if ok else "Not found", 200 if ok else 404)
+        except DuplicateVINError as e:
+            return cors_response(str(e), 409)
 
     # DELETE
     ok = delete_vehicle(user.id, vid)

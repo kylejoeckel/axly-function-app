@@ -3,19 +3,30 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from typing import List, Optional, Mapping
-from sqlalchemy import exists, and_
+from sqlalchemy import exists, and_, func
 from sqlalchemy.orm import joinedload
 from db import SessionLocal
 from models import (
     Vehicle,
     VehicleMod,
-    VehicleService as Svc,          
+    VehicleService as Svc,
     ServiceDocument as SvcDoc,
     ServiceReminder as SvcRem,
 )
 
 VEHICLE_FIELDS = {"make", "model", "submodel", "year", "vin"}
-MOD_FIELDS     = {"name", "description", "installed_on"}
+
+
+class DuplicateVINError(Exception):
+    """Raised when attempting to create/update a vehicle with a VIN that already exists."""
+    def __init__(self, vin: str, existing_vehicle: Vehicle):
+        self.vin = vin
+        self.existing_vehicle = existing_vehicle
+        vehicle_name = f"{existing_vehicle.year} {existing_vehicle.make} {existing_vehicle.model}".strip()
+        super().__init__(f"A vehicle with VIN '{vin}' already exists: {vehicle_name}")
+
+
+MOD_FIELDS = {"name", "description", "installed_on"}
 
 
 def _sanitize_patch(data: Mapping | None, allowed: set[str]) -> dict:
@@ -45,6 +56,19 @@ def create_vehicle(
     vin: Optional[str] = None,
 ) -> Vehicle:
     with SessionLocal() as db:
+        if vin:
+            normalized_vin = vin.upper().strip()
+            existing = (
+                db.query(Vehicle)
+                .filter(
+                    Vehicle.user_id == user_id,
+                    func.upper(func.trim(Vehicle.vin)) == normalized_vin,
+                )
+                .first()
+            )
+            if existing:
+                raise DuplicateVINError(vin, existing)
+
         v = Vehicle(user_id=user_id, make=make, model=model, year=year, submodel=submodel, vin=vin)
         db.add(v)
         db.commit()
@@ -63,12 +87,26 @@ def get_vehicle(user_id: uuid.UUID, vehicle_id: uuid.UUID) -> Optional[Vehicle]:
 
 
 def update_vehicle(user_id: uuid.UUID, vehicle_id: uuid.UUID, patch: dict) -> bool:
-    """Only allow make/model/submodel/year to be updated. Unknown keys are dropped."""
+    """Only allow make/model/submodel/year/vin to be updated. Unknown keys are dropped."""
     patch = _sanitize_patch(patch, VEHICLE_FIELDS)
     if not patch:
-        return True  
+        return True
 
     with SessionLocal() as db:
+        if "vin" in patch and patch["vin"]:
+            normalized_vin = patch["vin"].upper().strip()
+            existing = (
+                db.query(Vehicle)
+                .filter(
+                    Vehicle.user_id == user_id,
+                    Vehicle.id != vehicle_id,
+                    func.upper(func.trim(Vehicle.vin)) == normalized_vin,
+                )
+                .first()
+            )
+            if existing:
+                raise DuplicateVINError(patch["vin"], existing)
+
         rows = (
             db.query(Vehicle)
             .filter(Vehicle.id == vehicle_id, Vehicle.user_id == user_id)
