@@ -23,3 +23,10 @@ from .subscription import (
 from .stripe_subscription import StripeSubscription
 from .subscription_product import SubscriptionProduct
 from .track_result import TrackResult
+from .pid import (
+    PIDRegistry,
+    DiscoveredPID,
+    PIDProfile,
+    ManufacturerGroup,
+    PIDCategory,
+)
