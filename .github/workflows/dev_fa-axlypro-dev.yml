@@ -57,3 +57,26 @@ jobs:
           slot-name: Production
           package: release.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_35E87DD2479C44D09B392391320E180B }}
+
+  migrate:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install alembic psycopg2-binary sqlalchemy
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_DEV }}
+        run: |
+          echo "Checking for pending migrations..."
+          alembic upgrade head
+          echo "Migrations complete."
