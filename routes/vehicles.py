@@ -48,24 +48,28 @@ def vehicles(req: func.HttpRequest) -> func.HttpResponse:
         return cors_response("Unauthorized", 401)
 
     if req.method == "GET":
-        items = list_vehicles(user.id)
-        return cors_response(
-            json.dumps([
-                {
-                    "id":         str(v.id),
-                    "make":       v.make,
-                    "model":      v.model,
-                    "submodel":   v.submodel,
-                    "year":       v.year,
-                    "vin":        v.vin,
-                    "image":      vis.get_primary_image_url(user.id, v.id) or None,
-                    "created_at": v.created_at.isoformat(),
-                }
-                for v in items
-            ]),
-            200,
-            "application/json",
-        )
+        try:
+            items = list_vehicles(user.id)
+            return cors_response(
+                json.dumps([
+                    {
+                        "id":         str(v.id),
+                        "make":       v.make,
+                        "model":      v.model,
+                        "submodel":   v.submodel,
+                        "year":       v.year,
+                        "vin":        v.vin,
+                        "image":      vis.get_primary_image_url(user.id, v.id) or None,
+                        "created_at": v.created_at.isoformat(),
+                    }
+                    for v in items
+                ]),
+                200,
+                "application/json",
+            )
+        except Exception as e:
+            logger.exception("list_vehicles failed")
+            return cors_response(f"List failed: {type(e).__name__}: {str(e)}", 500)
 
     # POST
     body     = req.get_json()

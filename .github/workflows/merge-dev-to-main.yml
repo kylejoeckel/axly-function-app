@@ -1,7 +1,10 @@
 name: Merge Dev to Main
 
 on:
-  workflow_dispatch:  # Manual trigger only
+  push:
+    branches:
+      - dev
+  workflow_dispatch:  # Also allow manual trigger
 
 jobs:
   merge:
