@@ -39,7 +39,7 @@ AXLY.pro backend provides:
 | Auth | JWT (HMAC-SHA256) |
 | AI | OpenAI GPT-4o-mini |
 | Storage | Azure Blob Storage |
-| Email | SendGrid |
+| Email | SMTP (Gmail) |
 
 ---
 
@@ -108,7 +108,11 @@ Server runs at `http://localhost:7071`
 | `DATABASE_URL` | PostgreSQL connection string |
 | `JWT_SECRET` | Secret key for JWT signing |
 | `OPENAI_API_KEY` | OpenAI API key |
-| `SENDGRID_API_KEY` | SendGrid API key for emails |
+| `SMTP_HOST` | SMTP server (default: smtp.gmail.com) |
+| `SMTP_PORT` | SMTP port (default: 587) |
+| `SMTP_USER` | SMTP username/email |
+| `SMTP_PASS` | SMTP password or app password |
+| `EMAIL_FROM` | From email address |
 | `APP_STORE_SHARED_SECRET` | Apple App Store shared secret |
 | `AZURE_STORAGE_CONNECTION_STRING` | Blob storage connection |
 | `CORS_ALLOWED_ORIGINS` | Allowed CORS origins |
