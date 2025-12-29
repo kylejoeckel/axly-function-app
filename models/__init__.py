@@ -30,11 +30,12 @@ from .pid import (
     ManufacturerGroup,
     PIDCategory,
 )
-from .module import (
-    ModuleRegistry,
-    CodingBitRegistry,
-    DiscoveredModule,
-    CodingHistory,
-    CodingCategory,
-    CodingSafetyLevel,
-)
+# Temporarily disabled - debugging deployment hang
+# from .module import (
+#     ModuleRegistry,
+#     CodingBitRegistry,
+#     DiscoveredModule,
+#     CodingHistory,
+#     CodingCategory,
+#     CodingSafetyLevel,
+# )
