@@ -31,7 +31,7 @@ _try("routes.stripe_routes", "stripe")
 _try("routes.admin_routes", "admin")
 _try("routes.track", "track")
 _try("routes.pids", "pids")
-# _try("routes.modules", "modules")  # Temporarily disabled - debugging deployment hang
+_try("routes.modules", "modules")
 
 @app.function_name(name="Ping")
 @app.route(route="ping", methods=["GET"])

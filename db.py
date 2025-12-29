@@ -1,5 +1,6 @@
 # db.py
 import os
+from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -14,3 +15,17 @@ engine = create_engine(
     pool_recycle=1800,
 )
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
+
+
+@contextmanager
+def get_session():
+    """Context manager for database sessions."""
+    session = SessionLocal()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
