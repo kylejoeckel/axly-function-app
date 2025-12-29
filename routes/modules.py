@@ -46,10 +46,9 @@ def modules_by_manufacturer(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     platform = req.params.get("platform")
-    vin = req.params.get("vin")
 
     try:
-        modules = get_modules_for_manufacturer(manufacturer, platform, vin)
+        modules = get_modules_for_manufacturer(manufacturer, platform)
 
         return cors_response(
             json.dumps({

@@ -19,11 +19,17 @@ class CodingCategory(str, enum.Enum):
     AUDIO = "audio"
     OTHER = "other"
 
+    def __str__(self):
+        return self.value
+
 
 class CodingSafetyLevel(str, enum.Enum):
     SAFE = "safe"
     CAUTION = "caution"
     ADVANCED = "advanced"
+
+    def __str__(self):
+        return self.value
 
 
 class ModuleRegistry(Base):
@@ -88,8 +94,8 @@ class CodingBitRegistry(Base):
     # Bit information
     name = Column(Text, nullable=False)  # Display name
     description = Column(Text, nullable=True)  # What this bit does
-    category = Column(Enum(CodingCategory), nullable=False, default=CodingCategory.OTHER)
-    safety_level = Column(Enum(CodingSafetyLevel), nullable=False, default=CodingSafetyLevel.SAFE)
+    category = Column(Enum(CodingCategory, values_callable=lambda x: [e.value for e in x], create_type=False), nullable=False, default=CodingCategory.OTHER)
+    safety_level = Column(Enum(CodingSafetyLevel, values_callable=lambda x: [e.value for e in x], create_type=False), nullable=False, default=CodingSafetyLevel.SAFE)
 
     # Platform support
     platforms = Column(ARRAY(Text), nullable=True)  # Which platforms support this
