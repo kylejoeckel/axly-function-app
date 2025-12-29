@@ -16,18 +16,36 @@ down_revision: Union[str, Sequence[str], None] = '7b87eef423eb'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Reference existing manufacturergroup enum (created in PID migration)
+manufacturergroup_enum = postgresql.ENUM(
+    'VAG', 'BMW', 'TOYOTA', 'GM', 'FORD', 'STELLANTIS', 'HONDA', 'NISSAN', 'HYUNDAI', 'MERCEDES', 'GENERIC',
+    name='manufacturergroup',
+    create_type=False
+)
+
+# New enums for this migration
+codingcategory_enum = postgresql.ENUM(
+    'comfort', 'lighting', 'display', 'safety', 'performance', 'audio', 'other',
+    name='codingcategory',
+    create_type=False
+)
+
+codingsafetylevel_enum = postgresql.ENUM(
+    'safe', 'caution', 'advanced',
+    name='codingsafetylevel',
+    create_type=False
+)
+
 
 def upgrade() -> None:
-    # Create coding category enum
+    # Create new enums (manufacturergroup already exists from PID migration)
     op.execute("CREATE TYPE codingcategory AS ENUM ('comfort', 'lighting', 'display', 'safety', 'performance', 'audio', 'other')")
-
-    # Create coding safety level enum
     op.execute("CREATE TYPE codingsafetylevel AS ENUM ('safe', 'caution', 'advanced')")
 
     # Create module_registry table
     op.create_table('module_registry',
         sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('manufacturer', sa.Enum('VAG', 'BMW', 'TOYOTA', 'GM', 'FORD', 'STELLANTIS', 'HONDA', 'NISSAN', 'HYUNDAI', 'MERCEDES', 'GENERIC', name='manufacturergroup', create_type=False), nullable=False),
+        sa.Column('manufacturer', manufacturergroup_enum, nullable=False),
         sa.Column('address', sa.Text(), nullable=False),
         sa.Column('name', sa.Text(), nullable=False),
         sa.Column('long_name', sa.Text(), nullable=True),
@@ -52,14 +70,14 @@ def upgrade() -> None:
     # Create coding_bit_registry table
     op.create_table('coding_bit_registry',
         sa.Column('id', sa.UUID(), nullable=False),
-        sa.Column('manufacturer', sa.Enum('VAG', 'BMW', 'TOYOTA', 'GM', 'FORD', 'STELLANTIS', 'HONDA', 'NISSAN', 'HYUNDAI', 'MERCEDES', 'GENERIC', name='manufacturergroup', create_type=False), nullable=False),
+        sa.Column('manufacturer', manufacturergroup_enum, nullable=False),
         sa.Column('module_address', sa.Text(), nullable=False),
         sa.Column('byte_index', sa.Integer(), nullable=False),
         sa.Column('bit_index', sa.Integer(), nullable=False),
         sa.Column('name', sa.Text(), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('category', sa.Enum('comfort', 'lighting', 'display', 'safety', 'performance', 'audio', 'other', name='codingcategory', create_type=False), nullable=False, server_default='other'),
-        sa.Column('safety_level', sa.Enum('safe', 'caution', 'advanced', name='codingsafetylevel', create_type=False), nullable=False, server_default='safe'),
+        sa.Column('category', codingcategory_enum, nullable=False, server_default='other'),
+        sa.Column('safety_level', codingsafetylevel_enum, nullable=False, server_default='safe'),
         sa.Column('platforms', postgresql.ARRAY(sa.Text()), nullable=True),
         sa.Column('requires', postgresql.ARRAY(sa.Text()), nullable=True),
         sa.Column('conflicts', postgresql.ARRAY(sa.Text()), nullable=True),
@@ -79,7 +97,7 @@ def upgrade() -> None:
         sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('vin', sa.Text(), nullable=False),
         sa.Column('vin_prefix', sa.Text(), nullable=False),
-        sa.Column('manufacturer', sa.Enum('VAG', 'BMW', 'TOYOTA', 'GM', 'FORD', 'STELLANTIS', 'HONDA', 'NISSAN', 'HYUNDAI', 'MERCEDES', 'GENERIC', name='manufacturergroup', create_type=False), nullable=False),
+        sa.Column('manufacturer', manufacturergroup_enum, nullable=False),
         sa.Column('module_address', sa.Text(), nullable=False),
         sa.Column('is_present', sa.Boolean(), nullable=False),
         sa.Column('part_number', sa.Text(), nullable=True),
@@ -100,7 +118,7 @@ def upgrade() -> None:
         sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('user_id', sa.UUID(), nullable=False),
         sa.Column('vehicle_id', sa.UUID(), nullable=False),
-        sa.Column('manufacturer', sa.Enum('VAG', 'BMW', 'TOYOTA', 'GM', 'FORD', 'STELLANTIS', 'HONDA', 'NISSAN', 'HYUNDAI', 'MERCEDES', 'GENERIC', name='manufacturergroup', create_type=False), nullable=False),
+        sa.Column('manufacturer', manufacturergroup_enum, nullable=False),
         sa.Column('module_address', sa.Text(), nullable=False),
         sa.Column('coding_before', sa.Text(), nullable=False),
         sa.Column('coding_after', sa.Text(), nullable=False),
@@ -143,6 +161,6 @@ def downgrade() -> None:
     op.drop_index('ix_module_registry_manufacturer', table_name='module_registry')
     op.drop_table('module_registry')
 
-    # Drop enums
+    # Drop only the new enums (don't drop manufacturergroup - it's used by PID tables)
     op.execute("DROP TYPE IF EXISTS codingsafetylevel")
     op.execute("DROP TYPE IF EXISTS codingcategory")
