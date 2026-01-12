@@ -37,4 +37,6 @@ from .module import (
     CodingHistory,
     CodingCategory,
     CodingSafetyLevel,
+    VehicleModule,
+    ModuleDTC,
 )

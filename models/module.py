@@ -152,6 +152,77 @@ class DiscoveredModule(Base):
     )
 
 
+class VehicleModule(Base):
+    """
+    Scanned modules stored per vehicle.
+    Persists module scan results so users don't need to rescan every time.
+    """
+    __tablename__ = "vehicle_modules"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    manufacturer = Column(Enum(ManufacturerGroup), nullable=False)
+    module_address = Column(Text, nullable=False)
+    module_name = Column(Text, nullable=False)
+    long_name = Column(Text, nullable=True)
+
+    is_present = Column(Boolean, nullable=False, default=False)
+    part_number = Column(Text, nullable=True)
+    software_version = Column(Text, nullable=True)
+    hardware_version = Column(Text, nullable=True)
+    coding_value = Column(Text, nullable=True)
+    coding_supported = Column(Boolean, nullable=False, default=False)
+
+    dtc_codes = Column(JSONB, nullable=True)
+
+    scanned_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index("ix_vehicle_modules_vehicle", "vehicle_id"),
+        Index("ix_vehicle_modules_user", "user_id"),
+        Index("ix_vehicle_modules_vehicle_address", "vehicle_id", "module_address", unique=True),
+    )
+
+
+class ModuleDTC(Base):
+    """
+    Diagnostic Trouble Codes read from ECU modules via UDS Service 19.
+    Extended codes beyond standard OBD-II (CEL/ABS/SRS).
+    """
+    __tablename__ = "module_dtcs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey("vehicles.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    manufacturer = Column(Enum(ManufacturerGroup), nullable=False)
+    module_address = Column(Text, nullable=False)
+    module_name = Column(Text, nullable=False)
+
+    dtc_code = Column(Text, nullable=False)
+    dtc_status = Column(Text, nullable=True)
+    dtc_description = Column(Text, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    is_pending = Column(Boolean, nullable=False, default=False)
+    is_permanent = Column(Boolean, nullable=False, default=False)
+
+    first_seen = Column(TIMESTAMP, server_default=func.now())
+    last_seen = Column(TIMESTAMP, server_default=func.now())
+    cleared_at = Column(TIMESTAMP, nullable=True)
+
+    __table_args__ = (
+        Index("ix_module_dtcs_vehicle", "vehicle_id"),
+        Index("ix_module_dtcs_user", "user_id"),
+        Index("ix_module_dtcs_vehicle_module", "vehicle_id", "module_address"),
+        Index("ix_module_dtcs_code", "vehicle_id", "module_address", "dtc_code"),
+    )
+
+
 class CodingHistory(Base):
     """
     User's coding change history (for rollback support).

@@ -14,6 +14,12 @@ from services.module_service import (
     report_discovered_module,
     seed_vag_modules,
     seed_vag_coding_bits,
+    save_vehicle_modules,
+    get_vehicle_modules,
+    delete_vehicle_modules,
+    save_module_dtcs,
+    get_vehicle_dtcs,
+    clear_vehicle_dtcs,
 )
 from models import ManufacturerGroup
 
@@ -386,3 +392,371 @@ def manufacturer_capabilities(req: func.HttpRequest) -> func.HttpResponse:
         200,
         "application/json"
     )
+
+
+@bp.function_name(name="VehicleModulesSave")
+@bp.route(route="vehicles/{vehicle_id}/modules", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def vehicle_modules_save(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Save scanned modules for a vehicle.
+    Persists module scan results for future sessions.
+
+    Request body:
+    {
+        "manufacturer": "VAG",
+        "modules": [
+            {
+                "address": "17",
+                "name": "Instrument Cluster",
+                "longName": "Dashboard / Instrument Cluster",
+                "isPresent": true,
+                "partNumber": "8K0 920 930 A",
+                "softwareVersion": "0350",
+                "hardwareVersion": "H12",
+                "codingValue": "0B0400000000",
+                "codingSupported": true
+            }
+        ]
+    }
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    user = current_user_from_request(req)
+    if not user:
+        return cors_response("Unauthorized", 401)
+
+    vehicle_id = req.route_params.get("vehicle_id")
+    if not vehicle_id:
+        return cors_response(
+            json.dumps({"error": "vehicle_id is required"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        body = req.get_json()
+    except Exception:
+        return cors_response(
+            json.dumps({"error": "Invalid JSON body"}),
+            400,
+            "application/json"
+        )
+
+    manufacturer_str = body.get("manufacturer", "").upper()
+    modules = body.get("modules", [])
+
+    if not modules:
+        return cors_response(
+            json.dumps({"error": "modules array is required"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        manufacturer = ManufacturerGroup(manufacturer_str)
+    except ValueError:
+        return cors_response(
+            json.dumps({"error": f"Invalid manufacturer: {manufacturer_str}"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        result = save_vehicle_modules(
+            vehicle_id=vehicle_id,
+            user_id=str(user.id),
+            manufacturer=manufacturer,
+            modules=modules,
+        )
+
+        return cors_response(
+            json.dumps(result),
+            200,
+            "application/json"
+        )
+    except Exception as e:
+        logger.exception("Error saving vehicle modules")
+        return cors_response(
+            json.dumps({"error": str(e)}),
+            500,
+            "application/json"
+        )
+
+
+@bp.function_name(name="VehicleModulesGet")
+@bp.route(route="vehicles/{vehicle_id}/modules", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def vehicle_modules_get(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Get saved modules for a vehicle.
+    Returns previously scanned module data.
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    user = current_user_from_request(req)
+    if not user:
+        return cors_response("Unauthorized", 401)
+
+    vehicle_id = req.route_params.get("vehicle_id")
+    if not vehicle_id:
+        return cors_response(
+            json.dumps({"error": "vehicle_id is required"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        modules = get_vehicle_modules(
+            vehicle_id=vehicle_id,
+            user_id=str(user.id),
+        )
+
+        return cors_response(
+            json.dumps({
+                "vehicleId": vehicle_id,
+                "modules": modules,
+                "totalCount": len(modules),
+            }),
+            200,
+            "application/json"
+        )
+    except Exception as e:
+        logger.exception("Error getting vehicle modules")
+        return cors_response(
+            json.dumps({"error": str(e)}),
+            500,
+            "application/json"
+        )
+
+
+@bp.function_name(name="VehicleModulesDelete")
+@bp.route(route="vehicles/{vehicle_id}/modules", methods=["DELETE", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def vehicle_modules_delete(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Delete all modules for a vehicle (before rescan).
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    user = current_user_from_request(req)
+    if not user:
+        return cors_response("Unauthorized", 401)
+
+    vehicle_id = req.route_params.get("vehicle_id")
+    if not vehicle_id:
+        return cors_response(
+            json.dumps({"error": "vehicle_id is required"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        result = delete_vehicle_modules(
+            vehicle_id=vehicle_id,
+            user_id=str(user.id),
+        )
+
+        return cors_response(
+            json.dumps(result),
+            200,
+            "application/json"
+        )
+    except Exception as e:
+        logger.exception("Error deleting vehicle modules")
+        return cors_response(
+            json.dumps({"error": str(e)}),
+            500,
+            "application/json"
+        )
+
+
+@bp.function_name(name="VehicleDTCsSave")
+@bp.route(route="vehicles/{vehicle_id}/dtcs", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def vehicle_dtcs_save(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Save DTCs read from a vehicle module.
+
+    Request body:
+    {
+        "manufacturer": "VAG",
+        "moduleAddress": "17",
+        "moduleName": "Instrument Cluster",
+        "dtcs": [
+            {
+                "code": "P0123",
+                "status": "active",
+                "description": "Throttle Position Sensor",
+                "isActive": true,
+                "isPending": false,
+                "isPermanent": false
+            }
+        ]
+    }
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    user = current_user_from_request(req)
+    if not user:
+        return cors_response("Unauthorized", 401)
+
+    vehicle_id = req.route_params.get("vehicle_id")
+    if not vehicle_id:
+        return cors_response(
+            json.dumps({"error": "vehicle_id is required"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        body = req.get_json()
+    except Exception:
+        return cors_response(
+            json.dumps({"error": "Invalid JSON body"}),
+            400,
+            "application/json"
+        )
+
+    manufacturer_str = body.get("manufacturer", "").upper()
+    module_address = body.get("moduleAddress")
+    module_name = body.get("moduleName", f"Module {module_address}")
+    dtcs = body.get("dtcs", [])
+
+    if not module_address:
+        return cors_response(
+            json.dumps({"error": "moduleAddress is required"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        manufacturer = ManufacturerGroup(manufacturer_str)
+    except ValueError:
+        return cors_response(
+            json.dumps({"error": f"Invalid manufacturer: {manufacturer_str}"}),
+            400,
+            "application/json"
+        )
+
+    try:
+        result = save_module_dtcs(
+            vehicle_id=vehicle_id,
+            user_id=str(user.id),
+            manufacturer=manufacturer,
+            module_address=module_address,
+            module_name=module_name,
+            dtcs=dtcs,
+        )
+
+        return cors_response(
+            json.dumps(result),
+            200,
+            "application/json"
+        )
+    except Exception as e:
+        logger.exception("Error saving vehicle DTCs")
+        return cors_response(
+            json.dumps({"error": str(e)}),
+            500,
+            "application/json"
+        )
+
+
+@bp.function_name(name="VehicleDTCsGet")
+@bp.route(route="vehicles/{vehicle_id}/dtcs", methods=["GET", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def vehicle_dtcs_get(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Get all DTCs for a vehicle.
+    Query param: active_only=true (default) to filter to active codes only.
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    user = current_user_from_request(req)
+    if not user:
+        return cors_response("Unauthorized", 401)
+
+    vehicle_id = req.route_params.get("vehicle_id")
+    if not vehicle_id:
+        return cors_response(
+            json.dumps({"error": "vehicle_id is required"}),
+            400,
+            "application/json"
+        )
+
+    active_only = req.params.get("active_only", "true").lower() == "true"
+
+    try:
+        dtcs = get_vehicle_dtcs(
+            vehicle_id=vehicle_id,
+            user_id=str(user.id),
+            active_only=active_only,
+        )
+
+        return cors_response(
+            json.dumps({
+                "vehicleId": vehicle_id,
+                "dtcs": dtcs,
+                "totalCount": len(dtcs),
+            }),
+            200,
+            "application/json"
+        )
+    except Exception as e:
+        logger.exception("Error getting vehicle DTCs")
+        return cors_response(
+            json.dumps({"error": str(e)}),
+            500,
+            "application/json"
+        )
+
+
+@bp.function_name(name="VehicleDTCsClear")
+@bp.route(route="vehicles/{vehicle_id}/dtcs/clear", methods=["POST", "OPTIONS"], auth_level=func.AuthLevel.ANONYMOUS)
+def vehicle_dtcs_clear(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Mark DTCs as cleared for a vehicle.
+    Optional: moduleAddress in body to clear only a specific module.
+    """
+    if req.method == "OPTIONS":
+        return cors_response(204)
+
+    user = current_user_from_request(req)
+    if not user:
+        return cors_response("Unauthorized", 401)
+
+    vehicle_id = req.route_params.get("vehicle_id")
+    if not vehicle_id:
+        return cors_response(
+            json.dumps({"error": "vehicle_id is required"}),
+            400,
+            "application/json"
+        )
+
+    module_address = None
+    try:
+        body = req.get_json()
+        module_address = body.get("moduleAddress")
+    except Exception:
+        pass
+
+    try:
+        result = clear_vehicle_dtcs(
+            vehicle_id=vehicle_id,
+            user_id=str(user.id),
+            module_address=module_address,
+        )
+
+        return cors_response(
+            json.dumps(result),
+            200,
+            "application/json"
+        )
+    except Exception as e:
+        logger.exception("Error clearing vehicle DTCs")
+        return cors_response(
+            json.dumps({"error": str(e)}),
+            500,
+            "application/json"
+        )
