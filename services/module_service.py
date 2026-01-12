@@ -12,6 +12,8 @@ from models.module import (
     CodingHistory,
     CodingCategory,
     CodingSafetyLevel,
+    VehicleModule,
+    ModuleDTC,
 )
 from models.pid import ManufacturerGroup
 
@@ -44,7 +46,6 @@ def get_modules_for_manufacturer(
                 "name": m.name,
                 "longName": m.long_name,
                 "canId": m.can_id,
-                "canIdResponse": m.can_id_response,
                 "codingSupported": m.coding_supported,
                 "codingDID": m.coding_did,
                 "codingLength": m.coding_length,
@@ -612,3 +613,254 @@ def seed_vag_coding_bits() -> Dict[str, Any]:
             "updated": updated,
             "total": len(coding_bits),
         }
+
+
+def save_vehicle_modules(
+    vehicle_id: str,
+    user_id: str,
+    manufacturer: ManufacturerGroup,
+    modules: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Save scanned modules for a vehicle.
+    Uses upsert to update existing modules or create new ones.
+    """
+    with get_session() as session:
+        created = 0
+        updated = 0
+
+        for m in modules:
+            existing = session.execute(
+                select(VehicleModule).where(
+                    VehicleModule.vehicle_id == vehicle_id,
+                    VehicleModule.module_address == m["address"],
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                existing.module_name = m["name"]
+                existing.long_name = m.get("longName")
+                existing.is_present = m.get("isPresent", False)
+                existing.part_number = m.get("partNumber")
+                existing.software_version = m.get("softwareVersion")
+                existing.hardware_version = m.get("hardwareVersion")
+                existing.coding_value = m.get("codingValue")
+                existing.coding_supported = m.get("codingSupported", False)
+                existing.dtc_codes = m.get("dtcCodes")
+                updated += 1
+            else:
+                vehicle_module = VehicleModule(
+                    vehicle_id=vehicle_id,
+                    user_id=user_id,
+                    manufacturer=manufacturer,
+                    module_address=m["address"],
+                    module_name=m["name"],
+                    long_name=m.get("longName"),
+                    is_present=m.get("isPresent", False),
+                    part_number=m.get("partNumber"),
+                    software_version=m.get("softwareVersion"),
+                    hardware_version=m.get("hardwareVersion"),
+                    coding_value=m.get("codingValue"),
+                    coding_supported=m.get("codingSupported", False),
+                    dtc_codes=m.get("dtcCodes"),
+                )
+                session.add(vehicle_module)
+                created += 1
+
+        session.commit()
+
+        return {
+            "vehicleId": vehicle_id,
+            "created": created,
+            "updated": updated,
+            "total": len(modules),
+        }
+
+
+def get_vehicle_modules(
+    vehicle_id: str,
+    user_id: str,
+) -> List[Dict[str, Any]]:
+    """
+    Get all saved modules for a vehicle.
+    """
+    with get_session() as session:
+        results = session.execute(
+            select(VehicleModule).where(
+                VehicleModule.vehicle_id == vehicle_id,
+                VehicleModule.user_id == user_id,
+            ).order_by(VehicleModule.module_address)
+        ).scalars().all()
+
+        return [
+            {
+                "address": m.module_address,
+                "name": m.module_name,
+                "longName": m.long_name,
+                "isPresent": m.is_present,
+                "partNumber": m.part_number,
+                "softwareVersion": m.software_version,
+                "hardwareVersion": m.hardware_version,
+                "codingValue": m.coding_value,
+                "codingSupported": m.coding_supported,
+                "dtcCodes": m.dtc_codes,
+                "scannedAt": m.scanned_at.isoformat() if m.scanned_at else None,
+            }
+            for m in results
+        ]
+
+
+def delete_vehicle_modules(vehicle_id: str, user_id: str) -> Dict[str, Any]:
+    """
+    Delete all modules for a vehicle (before rescan).
+    """
+    with get_session() as session:
+        result = session.execute(
+            select(VehicleModule).where(
+                VehicleModule.vehicle_id == vehicle_id,
+                VehicleModule.user_id == user_id,
+            )
+        ).scalars().all()
+
+        deleted = len(result)
+        for m in result:
+            session.delete(m)
+
+        session.commit()
+
+        return {"deleted": deleted}
+
+
+def save_module_dtcs(
+    vehicle_id: str,
+    user_id: str,
+    manufacturer: ManufacturerGroup,
+    module_address: str,
+    module_name: str,
+    dtcs: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Save DTCs read from a module.
+    Updates existing DTCs or creates new ones.
+    """
+    from datetime import datetime
+
+    with get_session() as session:
+        created = 0
+        updated = 0
+
+        for dtc in dtcs:
+            existing = session.execute(
+                select(ModuleDTC).where(
+                    ModuleDTC.vehicle_id == vehicle_id,
+                    ModuleDTC.module_address == module_address,
+                    ModuleDTC.dtc_code == dtc["code"],
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                existing.last_seen = datetime.utcnow()
+                existing.is_active = dtc.get("isActive", True)
+                existing.is_pending = dtc.get("isPending", False)
+                existing.is_permanent = dtc.get("isPermanent", False)
+                existing.dtc_status = dtc.get("status")
+                existing.dtc_description = dtc.get("description")
+                if dtc.get("cleared"):
+                    existing.cleared_at = datetime.utcnow()
+                updated += 1
+            else:
+                module_dtc = ModuleDTC(
+                    vehicle_id=vehicle_id,
+                    user_id=user_id,
+                    manufacturer=manufacturer,
+                    module_address=module_address,
+                    module_name=module_name,
+                    dtc_code=dtc["code"],
+                    dtc_status=dtc.get("status"),
+                    dtc_description=dtc.get("description"),
+                    is_active=dtc.get("isActive", True),
+                    is_pending=dtc.get("isPending", False),
+                    is_permanent=dtc.get("isPermanent", False),
+                )
+                session.add(module_dtc)
+                created += 1
+
+        session.commit()
+
+        return {
+            "vehicleId": vehicle_id,
+            "moduleAddress": module_address,
+            "created": created,
+            "updated": updated,
+        }
+
+
+def get_vehicle_dtcs(
+    vehicle_id: str,
+    user_id: str,
+    active_only: bool = True,
+) -> List[Dict[str, Any]]:
+    """
+    Get all DTCs for a vehicle, optionally filtered to active only.
+    """
+    with get_session() as session:
+        query = select(ModuleDTC).where(
+            ModuleDTC.vehicle_id == vehicle_id,
+            ModuleDTC.user_id == user_id,
+        )
+
+        if active_only:
+            query = query.where(ModuleDTC.cleared_at == None)
+
+        results = session.execute(
+            query.order_by(ModuleDTC.module_address, ModuleDTC.dtc_code)
+        ).scalars().all()
+
+        return [
+            {
+                "moduleAddress": d.module_address,
+                "moduleName": d.module_name,
+                "code": d.dtc_code,
+                "status": d.dtc_status,
+                "description": d.dtc_description,
+                "isActive": d.is_active,
+                "isPending": d.is_pending,
+                "isPermanent": d.is_permanent,
+                "firstSeen": d.first_seen.isoformat() if d.first_seen else None,
+                "lastSeen": d.last_seen.isoformat() if d.last_seen else None,
+            }
+            for d in results
+        ]
+
+
+def clear_vehicle_dtcs(
+    vehicle_id: str,
+    user_id: str,
+    module_address: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Mark DTCs as cleared for a vehicle (or specific module).
+    """
+    from datetime import datetime
+
+    with get_session() as session:
+        query = select(ModuleDTC).where(
+            ModuleDTC.vehicle_id == vehicle_id,
+            ModuleDTC.user_id == user_id,
+            ModuleDTC.cleared_at == None,
+        )
+
+        if module_address:
+            query = query.where(ModuleDTC.module_address == module_address)
+
+        results = session.execute(query).scalars().all()
+
+        cleared = 0
+        for d in results:
+            d.cleared_at = datetime.utcnow()
+            d.is_active = False
+            cleared += 1
+
+        session.commit()
+
+        return {"cleared": cleared}
