@@ -72,8 +72,8 @@ def upgrade() -> None:
 
     for addr, name, long_name, can_id, coding_supported, priority in vag_modules:
         conn.execute(text("""
-            INSERT INTO module_registry (manufacturer, address, name, long_name, can_id, coding_supported, priority)
-            VALUES ('VAG', :addr, :name, :long_name, :can_id, :coding_supported, :priority)
+            INSERT INTO module_registry (id, manufacturer, address, name, long_name, can_id, coding_supported, priority)
+            VALUES (gen_random_uuid(), 'VAG', :addr, :name, :long_name, :can_id, :coding_supported, :priority)
             ON CONFLICT (manufacturer, address) DO UPDATE SET
                 name = EXCLUDED.name,
                 long_name = EXCLUDED.long_name,
@@ -268,8 +268,8 @@ def upgrade() -> None:
 
     for module, byte_idx, bit_idx, name, desc, cat, safety in coding_bits:
         conn.execute(text("""
-            INSERT INTO coding_bit_registry (manufacturer, module_address, byte_index, bit_index, name, description, category, safety_level, source)
-            VALUES ('VAG', :module, :byte_idx, :bit_idx, :name, :desc, :cat, :safety, 'ross-tech-wiki')
+            INSERT INTO coding_bit_registry (id, manufacturer, module_address, byte_index, bit_index, name, description, category, safety_level, source)
+            VALUES (gen_random_uuid(), 'VAG', :module, :byte_idx, :bit_idx, :name, :desc, :cat, :safety, 'ross-tech-wiki')
             ON CONFLICT (manufacturer, module_address, byte_index, bit_index) DO UPDATE SET
                 name = EXCLUDED.name,
                 description = EXCLUDED.description,
